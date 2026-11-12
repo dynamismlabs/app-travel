@@ -314,7 +314,7 @@ const dismissGap = act({
 
 const createFollowUp = act({
   name: "create_follow_up", title: "Add a Ri follow-up",
-  description: "Create one Ri task linked to a trip, booking, idea or review item, with an optional due date. Ri asks the person to approve it first; until then it waits as pending and Travel adds it once approved. Pass the same operationId on a retry or second click to get the same task. Nothing is sent to anyone.",
+  description: "Create one Ri task linked to a trip, booking, idea or review item, with an optional due date. Ri asks the person to approve it first. Until then it waits as pending, and Travel adds it once approved. Pass the same operationId on a retry or second click to get the same task. Nothing is sent to anyone.",
   input: s.createFollowUpInput, output: s.followUpOutput, effect: "write",
   async handler(ctx, input, t) {
     return createFollowUps(t).create(ctx, t.resolve(ctx, "write"), input);
@@ -358,7 +358,8 @@ const previewImport = act({
   description: "Read a chosen file (PDF, text, HTML or saved email, base64) or pasted confirmation and preview the bookings found, their source passages, matching bookings and trip placement. Nothing changes until apply_import. PDFs are read by Ri.",
   input: s.previewImportInput, output: s.previewOutput, effect: "write",
   async handler(ctx, input, t) {
-    return createImports(t).preview(ctx, owner(t, ctx, "write"), input);
+    // Anyone who may write imported files: the person, or a connection given "Uploaded and pasted confirmations" and changes.
+    return createImports(t).preview(ctx, t.resolve(ctx, "write"), input);
   },
 });
 
@@ -367,7 +368,7 @@ const applyImport = act({
   description: "Apply exactly the stored preview once, by preview ID and digest. Adds or updates the matching bookings, places them in trips and sends anything uncertain to Review. A repeat returns the first result.",
   input: s.applyImportInput, output: s.applyOutput, effect: "write",
   handler(ctx, input, t) {
-    return createImports(t).apply(ctx, owner(t, ctx, "write"), input);
+    return createImports(t).apply(ctx, t.resolve(ctx, "write"), input);
   },
 });
 

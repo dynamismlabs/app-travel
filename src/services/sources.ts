@@ -221,11 +221,16 @@ export function createSources(t: Travel) {
       if (kind === "reconnect" || kind === "not_allowed") return { ...found, connected: false, message: error instanceof Error ? error.message : "Connect Travel to Ri in Settings." };
       throw error;
     }
+    // An account that must sign in again in Ri can't name itself. Keep the ones Travel knows,
+    // so their own steps report it and their records stay.
+    const unsure = new Set<"mail" | "calendar">();
     const names = async (kind: "mail" | "calendar", ask: () => Promise<string | null>) => {
       try { const name = await ask(); if (name) found[kind].push(name); }
       catch (error) {
-        if (failureKind(error) === "choose_account") found[kind].push(...accountsFromChoice(error));
-        else if (failureKind(error) !== "not_allowed") throw error;
+        const failure = failureKind(error);
+        if (failure === "choose_account") found[kind].push(...accountsFromChoice(error));
+        else if (failure === "reconnect") { unsure.add(kind); found[kind].push(...accounts.list().filter((item) => item.kind === kind && !isFictional(item.account)).map((item) => item.account)); }
+        else if (failure !== "not_allowed") throw error;
       }
     };
     if (tools.includes(HUB_TOOLS.profile) && (tools.includes(HUB_TOOLS.read) || tools.includes(HUB_TOOLS.search)))
@@ -237,10 +242,11 @@ export function createSources(t: Travel) {
         for (const account of found[kind]) {
           const stored = accounts.get(account, kind);
           if (!stored) accounts.setup({ account, kind, historyDays: DEFAULT_HISTORY_DAYS, label: account, calendars: kind === "calendar" ? ["primary"] : [] });
-          else if (stored.status === "reconnect") repo.run("UPDATE app_source_accounts SET status = CASE WHEN paused = 1 THEN 'paused' WHEN checkpoint IS NULL THEN 'not_started' ELSE 'ready' END, last_error = NULL, updated_at = ? WHERE account = ? AND kind = ?", repo.iso(), account, kind);
+          else if (stored.status === "reconnect" && !unsure.has(kind)) repo.run("UPDATE app_source_accounts SET status = CASE WHEN paused = 1 THEN 'paused' WHEN checkpoint IS NULL THEN 'not_started' ELSE 'ready' END, last_error = NULL, updated_at = ? WHERE account = ? AND kind = ?", repo.iso(), account, kind);
         }
+        if (unsure.has(kind)) continue;
         for (const stored of accounts.list().filter((item) => item.kind === kind && !found[kind].includes(item.account) && !isFictional(item.account)))
-          if (stored.status !== "reconnect") accounts.failed(stored.account, kind, "reconnect", "Ri no longer lets Travel read this account. Records already imported are kept.");
+          accounts.failed(stored.account, kind, "reconnect", "Ri no longer lets Travel read this account. Records already imported are kept.");
       }
     });
     return { ...found, connected: true, message: null };

@@ -195,7 +195,8 @@ export function fakeHub(options: FakeHubOptions = {}): FakeHub {
       calls.push({ name, input, account: requested });
       if (name.startsWith("gmail__")) {
         const [account, box] = pick(options.gmail, requested, name);
-        if (box.revoked) throw new SetupRequired("Reconnect this account in Ri.");
+        // Ri answers an account that must sign in again with a status, not an error.
+        if (box.revoked) return { status: "authorization_required", provider: "gmail", message: "This needs a connected gmail account. The app is prompting the user to authorize, tell them to complete it, then retry." };
         if (name === "gmail__get_profile") return { emailAddress: account, historyId: String(box.historyId) };
         if (name === "gmail__search_messages") {
           const index = input.pageToken ? Number(String(input.pageToken).slice(1)) : 0;

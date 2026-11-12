@@ -286,7 +286,9 @@ export function createSync(t: Travel, ctx: Context) {
   function failed(job: JobRecord, account: string, error: unknown): StepSummary {
     const kind = job.kind === "calendar_sync" ? "calendar" : "mail";
     const failure = failureKind(error);
-    const reason = failure === "reconnect" ? "Reconnect Travel to Ri in Settings to continue updates. Records already imported are kept."
+    const message = error instanceof Error ? error.message : "";
+    const reason = failure === "reconnect" && /connect this app/i.test(message) ? "Reconnect Travel to Ri in Settings to continue updates. Records already imported are kept."
+      : failure === "reconnect" ? "Reconnect this account in Ri to continue updates. Records already imported are kept."
       : failure === "not_allowed" ? "Travel no longer has access to this account. Allow it for Travel in Ri."
       : failure === "choose_account" ? "Ri asked which account to use. Check Travel's accounts in Ri."
       : failure === "busy" ? "The account was busy. Travel will try again shortly."

@@ -1,24 +1,23 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrate, type SqlDatabase } from "@ri/app-kit/data";
-import { openAppDatabase } from "@ri/app-kit/sdk";
-import { MIGRATIONS } from "../src/db/migrations.js";
-import { MULTIPLE_TRIPS_REASON, POSSIBLE_DUPLICATE_REASON } from "../src/domain/model.js";
-import { chat, cleanup, fakeConnectors, gmailAccount, harness, job, mailGrant, owner, type Caller, type FakeMail } from "./helpers.js";
+import { application } from "../src/app.js";
+import { chat, cleanup, fakeHub, gmailAccount, harness, job, owner, type Caller, type FakeMail } from "./helpers.js";
 import * as fx from "../src/fixtures/messages.js";
 
 afterEach(cleanup);
 const mail = (message: fx.FixtureMessage): FakeMail => ({ id: message.id, subject: message.subject, from: message.from, receivedAt: message.receivedAt, text: message.text });
 
-/** Account A holds Lisbon mail, account B holds Portland mail, plus a manual idea and booking. */
+/**
+ * Account A holds Lisbon mail, account B holds Portland mail, plus a manual
+ * idea and booking. Two assistant connections, as the person chose on the
+ * consent screen: one may read account A, the other may read and change
+ * account B and manual entries.
+ */
 async function world() {
   const gmail = { "acct-a": gmailAccount([mail(fx.LISBON_FLIGHT), mail(fx.LISBON_HOTEL)]), "acct-b": gmailAccount([mail(fx.PORTLAND_TRAIN), mail(fx.PORTLAND_HOTEL)]) };
-  const capability = fakeConnectors({ gmail });
-  const h = await harness({ capability });
-  const ownerCaller = owner([mailGrant("acct-a"), mailGrant("acct-b")]);
+  const capability = fakeHub({ gmail });
+  const h = await harness({ hub: capability });
+  const ownerCaller = owner();
   for (const account of ["acct-a", "acct-b"]) for (let step = 0; step < 4; step++) await h.call("continue_import", { source: `account:${account}`, kind: "mail" }, ownerCaller);
   const trips = (await h.call("list_trips", { limit: 50, when: "all" }, ownerCaller)).items;
   const lisbon = trips.find((trip: { title: string }) => trip.title === "Lisbon");
@@ -27,16 +26,15 @@ async function world() {
   const idea = await h.call("save_idea", { tripId: lisbon.id, title: "Fado evening", priceMinor: 4800, currency: "USD" }, ownerCaller);
   const manual = await h.call("save_booking", { tripId: lisbon.id, draft: { kind: "activity", title: "Tile workshop", travelers: ["Alex Rivera"], segments: [{ startLocal: "2026-11-12T10:00", startZone: "Europe/Lisbon", address: "Rua da Madalena, Lisbon" }] } }, ownerCaller);
   const bookings = (await h.call("list_bookings", { limit: 50, status: "all", kind: "all" }, ownerCaller)).items;
-  const scopeA = (await h.call("create_scope", { actorId: "chat:one", sources: ["account:acct-a"], operations: ["read"] }, ownerCaller)).scopeRef;
-  const scopeB = (await h.call("create_scope", { actorId: "chat:two", sources: ["account:acct-b", "manual"], operations: ["read", "write"] }, ownerCaller)).scopeRef;
-  return { h, ownerCaller, lisbon, portland, idea: idea.record, manual: manual.record, bookings, scopeA, scopeB, capability };
+  const one = chat("one", ["account:acct-a"], false);
+  const two = chat("two", ["account:acct-b", "manual"], true);
+  return { h, ownerCaller, lisbon, portland, idea: idea.record, manual: manual.record, bookings, one, two, capability };
 }
 
-describe("app data scopes", () => {
-  it("gives the owner everything and two chats only their own sources, with no leakage through lists, search, counts, context or details", async () => {
+describe("access per connection", () => {
+  it("gives the owner everything and two connections only their own sources, with no leakage through lists, search, counts, context or details", async () => {
     const w = await world();
-    const { h } = w;
-    const one = chat("one", w.scopeA), two = chat("two", w.scopeB);
+    const { h, one, two } = w;
     const titles = (items: { title: string }[]) => items.map((item) => item.title).sort();
     expect(titles(w.bookings)).toEqual(["Alder Street Inn", "Flight RA 204", "Riverside House", "Tile workshop", "Train Coast Line 11"]);
 
@@ -73,6 +71,7 @@ describe("app data scopes", () => {
     const contextOne = await h.call("describe_view_context", { path: `/trips/${w.lisbon.id}`, query: {}, state }, one);
     expect(contextOne.modelContent).toContain(`[booking ${flight.id}, revision`);
     expect(contextOne.modelContent).toContain("1 selected record is not available to this chat.");
+    expect(contextOne.modelContent).toContain("This connection sees only the Travel sources the person chose for it.");
     expect(contextOne.modelContent).not.toContain("Alder Street");
     expect(contextOne.modelContent).not.toContain("Tile workshop");
     expect(contextOne.recordRefs.map((ref: { recordId: string }) => ref.recordId)).not.toContain(hidden.id);
@@ -92,12 +91,11 @@ describe("app data scopes", () => {
     await expect(h.call("review_change", { id: "x", expectedRevision: 1, decision: "dismiss" }, two)).rejects.toMatchObject({ code: "forbidden" });
   });
 
-  it("enforces read-only scopes, allows writes inside a write scope and keeps a narrower chat's revision stable", async () => {
+  it("refuses writes for a read-only connection, allows writes inside its sources and keeps a narrower connection's revision stable", async () => {
     const w = await world();
-    const { h } = w;
-    const one = chat("one", w.scopeA), two = chat("two", w.scopeB);
+    const { h, one, two } = w;
     const flight = w.bookings.find((booking: { title: string }) => booking.title === "Flight RA 204");
-    await expect(h.call("save_booking", { id: flight.id, expectedRevision: flight.revision, notes: "x" }, one)).rejects.toThrow(/may read but not change/);
+    await expect(h.call("save_booking", { id: flight.id, expectedRevision: flight.revision, notes: "x" }, one)).rejects.toThrow(/can read but not make changes/);
     const idea = await h.call("save_idea", { tripId: w.lisbon.id, title: "Chat idea" }, two).catch((error) => error);
     // The Lisbon trip itself came from account A, which chat two cannot change.
     expect(idea.code).toBe("forbidden");
@@ -109,49 +107,44 @@ describe("app data scopes", () => {
     expect((await h.call("list_trips", { limit: 50, when: "all" }, one)).revision).toBe(before);
   });
 
-  it("denies a revoked scope, a chat with no scope and a scope made for another chat", async () => {
+  it("shows nothing to a connection given no sources, and everything to one given all of them", async () => {
     const w = await world();
     const { h } = w;
-    await expect(h.call("list_trips", { limit: 50, when: "all" }, chat("three", null))).rejects.toMatchObject({ code: "forbidden" });
-    await expect(h.call("list_trips", { limit: 50, when: "all" }, chat("three", w.scopeA))).rejects.toMatchObject({ code: "forbidden" });
-    await expect(h.call("describe_view_context", { path: "/", query: {} }, chat("three", null))).rejects.toMatchObject({ code: "forbidden" });
-    await h.call("revoke_scope", { scopeRef: w.scopeA }, w.ownerCaller);
-    await expect(h.call("list_trips", { limit: 50, when: "all" }, chat("one", w.scopeA))).rejects.toMatchObject({ code: "revoked" });
-    const scopes = await h.call("list_scopes", {}, w.ownerCaller);
-    expect(scopes.items.find((item: { id: string }) => item.id === w.scopeA).revoked).toBe(true);
-    await expect(h.call("create_scope", { actorId: "chat:x", sources: ["account:unknown"], operations: ["read"] }, w.ownerCaller)).rejects.toThrow(/Choose sources/);
-    await expect(h.call("create_scope", { actorId: "owner-ui:owner", sources: ["manual"], operations: ["read"] }, w.ownerCaller)).rejects.toThrow();
+    const none = chat("three", [], false);
+    expect((await h.call("list_trips", { limit: 50, when: "all" }, none)).items).toEqual([]);
+    expect((await h.call("list_bookings", { limit: 50, status: "all", kind: "all" }, none)).items).toEqual([]);
+    await expect(h.call("get_trip", { id: w.lisbon.id }, none)).rejects.toMatchObject({ code: "not_found" });
+    const all = chat("four", null, true);
+    expect((await h.call("list_bookings", { limit: 50, status: "all", kind: "all" }, all)).items).toHaveLength(5);
+    // A connection allowed everything may manage Travel, as the person can.
+    expect((await h.call("list_sources", {}, all)).accounts.length).toBe(2);
+    const readOnlyAll = chat("five", null, false);
+    await expect(h.call("pause_source", { account: "acct-a", paused: true }, readOnlyAll)).rejects.toThrow(/can read but not make changes/);
   });
 
-  it("limits a job to its own automatic accounts", async () => {
-    const gmail = { "acct-a": gmailAccount([mail(fx.LISBON_FLIGHT)]), "acct-b": gmailAccount([mail(fx.PORTLAND_TRAIN)]) };
-    const capability = fakeConnectors({ gmail });
-    const h = await harness({ capability });
-    for (let step = 0; step < 4; step++) await h.call("run_background_step", {}, job(["acct-a"]));
+  it("imports only the accounts Ri grants, and the job sees everything it imports", async () => {
+    const gmail = { "acct-a": gmailAccount([mail(fx.LISBON_FLIGHT)]) };
+    const capability = fakeHub({ gmail });
+    const h = await harness({ hub: capability });
+    await h.call("sync_sources", {}, job());
     expect(capability.calls.length).toBeGreaterThan(0);
-    expect(capability.calls.every((call) => call.account === "acct-a")).toBe(true);
+    expect(capability.calls.filter((call) => call.account).every((call) => call.account === "acct-a")).toBe(true);
     const trips = await h.call("list_trips", { limit: 50, when: "all" }, owner());
     expect(trips.items.map((trip: { title: string }) => trip.title)).toEqual(["Lisbon"]);
-    // A job reads no records: its grant covers its account's ingestion only.
-    await expect(h.call("list_trips", { limit: 50, when: "all" }, job(["acct-a"]))).rejects.toMatchObject({ code: "forbidden" });
   });
 
-  it("opens the access view with the host-bound actor and lists shareable sources", async () => {
+  it("offers each account and collection as a source on the consent screen", async () => {
     const w = await world();
-    const opened = await w.h.call("open_view", { path: "/access", query: { hostActor: "chat:new" } }, w.ownerCaller);
-    expect(opened.scope).toEqual({ actions: ["create_scope"], bindings: { actorId: "chat:new" } });
-    expect(opened.data.section).toBe("access");
-    expect(opened.data.access.sources.map((source: { key: string }) => source.key).sort()).toEqual(["account:acct-a", "account:acct-b", "imports", "manual"]);
-    const chatView = await w.h.call("open_view", { path: "/access", query: { hostActor: "chat:new" } }, chat("one", w.scopeA));
-    expect(chatView.data.section).toBe("sources");
-    expect(chatView.data.access).toBeNull();
+    const listed = await application.sources!.list({ platform: w.h.platform, viewer: { id: "local-owner", name: "You", email: "" }, request: new Request("http://127.0.0.1/") });
+    expect(listed.map((source) => source.id).sort()).toEqual(["account:acct-a", "account:acct-b", "imports", "manual"]);
+    expect(listed.find((source) => source.id === "manual")).toMatchObject({ name: "Manual entries and ideas", detail: "Trips, bookings and ideas you entered" });
   });
 });
 
 describe("Ask Ri and What is missing", () => {
   it("Ask Ri cites the selected booking, stages text without sending, and cannot resolve another account's reservation", async () => {
     const w = await world();
-    const one = chat("one", w.scopeA);
+    const one = w.one;
     const hotel = w.bookings.find((booking: { title: string }) => booking.title === "Riverside House");
     const other = w.bookings.find((booking: { title: string }) => booking.title === "Train Coast Line 11");
     const context = await w.h.call("describe_view_context", { path: `/trips/${w.lisbon.id}`, query: {}, state: { section: "trip", tripId: w.lisbon.id, selected: [{ type: "booking", id: hotel.id }, { type: "booking", id: other.id }], revisions: { [hotel.id]: hotel.revision } } }, one);
@@ -161,9 +154,8 @@ describe("Ask Ri and What is missing", () => {
     expect(context.modelContent).not.toContain("Coast Line");
     expect(context.modelContent).toContain("1 selected record is not available to this chat.");
     expect(context.recordRefs.map((ref: { recordId: string }) => ref.recordId)).toContain(hotel.id);
-    // No action stages or sends chat text. Staging is a host intent from the view, covered by the packaged view test.
-    const { definition } = await import("../src/actions.js");
-    expect(definition.actions.some((action) => /send|message|email/.test(action.name))).toBe(false);
+    // No action sends anything to anyone.
+    expect(application.actions.some((action) => /send|message|email/.test(action.name))).toBe(false);
   });
 
   it("What is missing?: context describes absent lodging as No booking recorded and conflicting times", async () => {
@@ -203,7 +195,7 @@ describe("trip names under the caller's projection", () => {
   it("names a shared booking's trip from the same projection as get_trip in lists, details, writes, history and context, and leaves the owner's view unchanged", async () => {
     const w = await privateWorld();
     const { h } = w;
-    const two = chat("two", w.scopeB);
+    const two = w.two;
     const tile = w.manual as Booking;
     const projected = (await h.call("get_trip", { id: w.lisbon.id }, two)).trip;
     expect(projected).toMatchObject({ projection: "partial", title: "Lisbon" });
@@ -243,8 +235,7 @@ describe("trip names under the caller's projection", () => {
   it("names trips in review items, import previews and import results from the caller's projection", async () => {
     const w = await privateWorld();
     const { h } = w;
-    const scopeRef = (await h.call("create_scope", { actorId: "chat:three", sources: ["manual", "imports"], operations: ["read", "write"] }, w.ownerCaller)).scopeRef;
-    const three = chat("three", scopeRef);
+    const three = chat("three", ["manual", "imports"], true);
 
     // The owner pastes a dinner. It fits only the account A trip, which chat three sees through the shared workshop booking.
     const first = await importAs(h, w.ownerCaller, asPaste(fx.LISBON_DINNER));
@@ -263,9 +254,9 @@ describe("trip names under the caller's projection", () => {
     const ownerReview = (await h.call("list_review_items", { limit: 50, state: "open" }, w.ownerCaller)).items.find((item: { id: string }) => item.id === review.id);
     expect(ownerReview.tripTitle).toBe(PRIVATE_TITLE);
 
-    // The import actions take the user audience. A scoped person using them gets the same projection.
-    // The account A trip is named as this person sees it, and not offered as a choice, since they may not change it. Apply still places the booking there.
-    const person = { ...three, audience: "user" as const };
+    // A connection allowed to change imported files may import, and gets the same projection.
+    // The account A trip is named as it sees it, and not offered as a choice, since it may not change it. Apply still places the booking there.
+    const person = three;
     const preview = await h.call("preview_import", { kind: "paste", text: asPaste(fx.LISBON_DINNER, fx.LISBON_DINNER.text.replace("19:00", "19:45")) }, person);
     expect(preview.items[0]).toMatchObject({ match: { bookingId: dinner }, suggestedTripId: null, suggestedTripTitle: null, placement: "Updates Dinner at Mesa in Lisbon." });
     const second = await h.call("preview_import", { kind: "paste", text: asPaste(fx.LISBON_DINNER, fx.LISBON_DINNER.text.replace("MS-1834", "MS-2001").replace("Tuesday, November 10", "Thursday, November 12")) }, person);
@@ -289,8 +280,7 @@ describe("trip names under the caller's projection", () => {
     const w = await privateWorld();
     const { h } = w;
     await h.call("save_trip", { title: "Conference", startDate: "2026-11-10", endDate: "2026-11-12" }, w.ownerCaller);
-    const scopeRef = (await h.call("create_scope", { actorId: "chat:three", sources: ["manual", "imports"], operations: ["read", "write"] }, w.ownerCaller)).scopeRef;
-    const three = chat("three", scopeRef);
+    const three = chat("three", ["manual", "imports"], true);
     const imported = await importAs(h, w.ownerCaller, asPaste(fx.LISBON_DINNER));
     expect(imported.preview.items[0].placement).toBe("Fits more than one trip. Choose one.");
     expect(imported.applied.outcomes[0]).toMatchObject({ action: "created", tripId: null });
@@ -311,73 +301,25 @@ describe("trip names under the caller's projection", () => {
   });
 });
 
-describe("replayed writes after access changes", () => {
-  /** A chat that may read and write account A and manual entries saves a booking into the account A trip. */
-  async function savedByBroadChat() {
+describe("retried creates", () => {
+  it("returns the same record to a retry with the same newId, and never shows it to a narrower connection that reuses the id", async () => {
     const w = await privateWorld();
     const { h } = w;
-    const broad = (await h.call("create_scope", { actorId: "chat:four", sources: ["account:acct-a", "manual"], operations: ["read", "write"] }, w.ownerCaller)).scopeRef;
-    const id = randomUUID();
-    const input = { tripId: w.lisbon.id, draft: { kind: "activity", title: "Cooking class", travelers: ["Alex Rivera"], segments: [{ startLocal: "2026-11-13T11:00", startZone: "Europe/Lisbon", address: "Rua da Madalena, Lisbon" }] } };
-    const saved = await h.call("save_booking", input, chat("four", broad), { id });
-    expect(saved.record.tripTitle).toBe(PRIVATE_TITLE);
+    const broad = chat("four", ["account:acct-a", "manual"], true);
+    const newId = randomUUID();
+    const input = { newId, tripId: w.lisbon.id, draft: { kind: "activity", title: "Cooking class", travelers: ["Alex Rivera"], segments: [{ startLocal: "2026-11-13T11:00", startZone: "Europe/Lisbon", address: "Rua da Madalena, Lisbon" }] } };
+    const saved = await h.call("save_booking", input, broad);
+    expect(saved.record).toMatchObject({ id: newId, tripTitle: PRIVATE_TITLE });
     const count = async () => (await h.call("list_bookings", { limit: 50, status: "all", kind: "all", query: "Cooking" }, w.ownerCaller)).items.length;
+    // The same caller retrying gets the same booking.
+    expect((await h.call("save_booking", input, broad)).record.id).toBe(newId);
     expect(await count()).toBe(1);
-    return { ...w, broad, id, input, count };
-  }
-
-  it("refuses to replay a saved write once the chat's scope is replaced by a narrower one", async () => {
-    const w = await savedByBroadChat();
-    const narrow = (await w.h.call("create_scope", { actorId: "chat:four", sources: ["manual"], operations: ["read", "write"] }, w.ownerCaller)).scopeRef;
-    await w.h.call("revoke_scope", { scopeRef: w.broad }, w.ownerCaller);
-    const replay = await w.h.call("save_booking", w.input, chat("four", narrow), { id: w.id }).catch((error) => error);
-    expect(replay).toMatchObject({ code: "conflict" });
+    // A connection that can't see the account A trip gets the booking only as its own projection.
+    const narrow = chat("five", ["manual"], true);
+    const replay = await h.call("save_booking", input, narrow).catch((error) => error);
     expect(JSON.stringify(replay)).not.toContain(PRIVATE_TITLE);
-    expect(await w.count()).toBe(1);
-  });
-
-  it("refuses to replay a saved write once the same scope narrows in place, and after it is revoked", async () => {
-    const w = await savedByBroadChat();
-    // Deleting account A's data removes it from every scope that shared it, under the same scope reference.
-    await w.h.call("delete_source_data", { source: "account:acct-a" }, w.ownerCaller);
-    const replay = await w.h.call("save_booking", w.input, chat("four", w.broad), { id: w.id }).catch((error) => error);
-    expect(replay).toMatchObject({ code: "conflict" });
-    expect(JSON.stringify(replay)).not.toContain(PRIVATE_TITLE);
-    expect(await w.count()).toBe(1);
-    await w.h.call("revoke_scope", { scopeRef: w.broad }, w.ownerCaller);
-    await expect(w.h.call("save_booking", w.input, chat("four", w.broad), { id: w.id })).rejects.toMatchObject({ code: "revoked" });
-    expect(await w.count()).toBe(1);
-  });
-
-  it("still returns the first result to the same caller with unchanged access", async () => {
-    const w = await savedByBroadChat();
-    const again = await w.h.call("save_booking", w.input, chat("four", w.broad), { id: w.id });
-    expect(again.record.tripTitle).toBe(PRIVATE_TITLE);
-    expect(await w.count()).toBe(1);
-  });
-});
-
-describe("stored review reasons", () => {
-  it("rewrites first-release reasons that named other trips or bookings, and leaves every other reason alone", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ri-travel-migrate-"));
-    const store = await openAppDatabase(path.join(dir, "records.db"));
-    try {
-      const db = store.db as unknown as SqlDatabase;
-      migrate(db, MIGRATIONS.slice(0, 2));
-      const insert = db.prepare("INSERT INTO review_items (id, created_at, updated_at, revision, kind, evidence_ids, reason, candidates, source_key, fingerprint, fictional) VALUES (?, '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z', 1, ?, '[]', ?, '[]', 'imports', ?, 0)");
-      insert.run("r1", "assign", `It fits more than one trip: ${PRIVATE_TITLE} and Conference. Choose one.`, "f1");
-      insert.run("r2", "identity", "This message could describe 2 recorded bookings (Riverside House for Alex Rivera, Riverside House for Sam Okafor). Choose the one it belongs to, or keep it separate.", "f2");
-      insert.run("r3", "assign", "This confirmation was forwarded, so confirm who is traveling and which trip it belongs to.", "f3");
-      migrate(db, MIGRATIONS);
-      const rows = db.prepare("SELECT id, reason, revision FROM review_items ORDER BY id").all() as { id: string; reason: string; revision: number }[];
-      expect(rows.map((row) => ({ ...row }))).toEqual([
-        { id: "r1", reason: MULTIPLE_TRIPS_REASON, revision: 2 },
-        { id: "r2", reason: POSSIBLE_DUPLICATE_REASON, revision: 2 },
-        { id: "r3", reason: "This confirmation was forwarded, so confirm who is traveling and which trip it belongs to.", revision: 1 },
-      ]);
-    } finally {
-      store.close();
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+    expect(await count()).toBe(1);
+    // An id already used by another kind of record is refused.
+    await expect(h.call("save_trip", { newId, title: "Clash" }, w.ownerCaller)).rejects.toMatchObject({ code: "conflict" });
   });
 });

@@ -1,60 +1,65 @@
+/**
+ * The contract assistants see: dist/contract.json and MCP's tool list are
+ * built from these same definitions by the kit (its own tests compare the
+ * two). This checks what Travel promises in them.
+ */
 import { describe, expect, it } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
-import { ContractValidator } from "@ri/app-kit/contract";
-import { generateContract } from "@ri/app-kit/sdk";
-import { definition } from "../src/actions.js";
+import { actionContract } from "@app-builder/core";
+import { application } from "../src/app.js";
+import * as s from "../src/actions/schemas.js";
+import * as ex from "../src/actions/examples.js";
 
-const root = path.resolve(import.meta.dirname, "..");
-/** Bundled workflow skills, read the way packaging reads them. */
-function workflows() {
-  const dir = path.join(root, "skills");
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).sort().flatMap((name) => {
-    const file = `skills/${name}/SKILL.md`;
-    if (!fs.existsSync(path.join(root, file))) return [];
-    const front = /^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(root, file), "utf8"))?.[1] ?? "";
-    const description = /^description:\s*(.+)$/m.exec(front)![1].trim().replace(/^["']|["']$/g, "");
-    return [{ name: /^name:\s*(.+)$/m.exec(front)?.[1]?.trim() ?? name, description, file }];
-  });
-}
+const contract = actionContract({ ...application, viewHTML: "<html></html>" });
+const tools = contract.mcp.tools as { name: string; description: string; _meta?: Record<string, unknown>; annotations: Record<string, boolean> }[];
 
 describe("contract", () => {
-  const validator = new ContractValidator();
-  const manifest = validator.manifest(JSON.parse(fs.readFileSync(path.join(root, "plugin.json"), "utf8")));
-  const contract = generateContract(definition, workflows());
-
-  it("validates against plugin.json, including every example input and output", () => {
-    expect(() => validator.contract(contract, manifest)).not.toThrow();
-    expect(contract.actions.length).toBeLessThanOrEqual(100);
-    for (const name of ["open_view", "describe_view_context", "create_scope", "list_sources", "run_background_step", "sync_step", "enrich_step", "preview_import", "apply_import", "create_follow_up", "list_trips", "get_trip", "save_trip", "list_bookings", "get_booking", "save_booking", "list_ideas", "save_idea", "review_change", "compare_ideas"])
-      expect(contract.actions.map((action) => action.name)).toContain(name);
+  it("offers Travel's data tools, its cards and open_travel to assistants", () => {
+    const names = tools.map((tool) => tool.name);
+    for (const name of ["list_trips", "get_trip", "save_trip", "list_bookings", "get_booking", "save_booking", "delete_booking", "list_ideas", "save_idea", "compare_ideas", "list_review_items", "review_change", "dismiss_gap", "create_follow_up", "list_follow_ups", "check_follow_up", "preview_import", "apply_import", "get_evidence", "export_trip", "open_view", "describe_view_context", "remember_view", "list_sources", "check_accounts", "setup_source", "list_calendars", "pause_source", "delete_source_data", "continue_import", "save_settings", "show_trip", "show_trips", "show_review", "open_travel"])
+      expect(names).toContain(name);
+    expect(tools.length).toBeLessThanOrEqual(100);
+    // Tool names follow Claude's rules.
+    for (const name of names) expect(name).not.toMatch(/__|\.\.|\._|_\./);
   });
 
-  it("keeps source management, scope creation, merges and destructive actions user only, and background work schedule only", () => {
-    const audience = (name: string) => contract.actions.find((action) => action.name === name)!.audience;
-    for (const name of ["create_scope", "list_sources", "setup_source", "pause_source", "delete_source_data", "continue_import", "review_change", "delete_booking", "revoke_scope", "export_trip", "preview_import", "apply_import"]) expect(audience(name)).toEqual(["user"]);
-    for (const name of ["run_background_step", "sync_step", "enrich_step"]) expect(audience(name)).toEqual(["schedule"]);
-    const background = contract.actions.find((action) => action.name === "run_background_step")!;
-    expect(background).toMatchObject({ effect: "app_write", retry: "idempotent", timeoutMs: 40000 });
-    for (const action of contract.actions) expect(action.retry).toBe(action.effect === "read" ? "read_safe" : "idempotent");
+  it("keeps the jobs' own actions off MCP, and declares its jobs, hub tools and purpose", () => {
+    const names = tools.map((tool) => tool.name);
+    expect(names).not.toContain("sync_sources");
+    expect(names).not.toContain("retry_follow_ups");
+    expect(contract.jobs).toEqual([
+      { name: "sync_sources", title: "Import from Gmail and Calendar", schedule: "every 5 minutes", action: "sync_sources" },
+      { name: "follow_ups", title: "Add approved follow-ups to Ri", schedule: "every 5 minutes", action: "retry_follow_ups" },
+    ]);
+    expect(contract.connectors).toMatchObject({ capabilities: ["mail.read", "calendar.read"] });
+    expect(contract.connectors!.tools).toEqual(expect.arrayContaining(["gmail__read_message", "gmail__list_history", "gmail__get_attachment", "google_calendar__sync_events", "ri__create_task", "ri__get_task", "ri__ai_text", "ri__extract_text"]));
   });
 
-  it("registers trip, booking and idea entities with paginated list and search actions and deep links", () => {
-    expect(contract.entities.map((entity) => [entity.type, entity.openPath])).toEqual([["trip", "/trips/{id}"], ["booking", "/bookings/{id}"], ["idea", "/ideas/{id}"]]);
-    expect(Object.keys(contract.contexts)).toEqual(["ui://ri-travel/main.html"]);
+  it("marks reads read-only and deletes destructive, and draws cards only from show_* and open_travel", () => {
+    const tool = (name: string) => tools.find((item) => item.name === name)!;
+    expect(tool("get_trip").annotations.readOnlyHint).toBe(true);
+    expect(tool("save_booking").annotations.readOnlyHint).toBe(false);
+    expect(tool("delete_booking").annotations.destructiveHint).toBe(true);
+    expect(tool("delete_source_data").annotations.destructiveHint).toBe(true);
+    for (const name of ["show_trip", "show_trips", "show_review", "open_travel"]) expect(tool(name)._meta?.["openai/outputTemplate"]).toBe("ui://travel/main");
+    expect(tool("list_trips")._meta?.["openai/outputTemplate"]).toBeUndefined();
   });
 
   it("uses copy without long dashes or semicolons in descriptions", () => {
-    for (const action of contract.actions) {
-      expect(action.description).not.toMatch(/[—–]/);
-      expect(action.description).not.toContain(";");
+    for (const item of [...tools, ...contract.actions]) {
+      expect(item.description).not.toMatch(/[—–]/);
+      expect(item.description).not.toContain(";");
     }
   });
 
-  it("matches the committed contract.json generated by packaging", () => {
-    const committed = path.join(root, "contract.json");
-    expect(fs.existsSync(committed)).toBe(true);
-    expect(JSON.parse(fs.readFileSync(committed, "utf8"))).toEqual(JSON.parse(JSON.stringify(contract)));
+  it("keeps the fictional examples valid against the schemas", () => {
+    expect(() => s.tripSchema.parse(ex.exampleTrip)).not.toThrow();
+    expect(() => s.bookingSchema.parse(ex.exampleHotel)).not.toThrow();
+    expect(() => s.bookingSchema.parse(ex.exampleFlight)).not.toThrow();
+    expect(() => s.ideaSchema.parse(ex.exampleIdea)).not.toThrow();
+    expect(() => s.reviewItemSchema.parse(ex.exampleReview)).not.toThrow();
+    expect(() => s.followUpSchema.parse(ex.exampleFollowUp)).not.toThrow();
+    expect(() => s.tripDetailSchema.parse(ex.exampleDetail)).not.toThrow();
+    expect(() => s.sourceAccountSchema.parse(ex.exampleSourceAccount)).not.toThrow();
+    expect(() => s.stepOutput.parse(ex.exampleStep)).not.toThrow();
   });
 });

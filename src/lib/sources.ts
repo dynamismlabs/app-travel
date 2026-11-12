@@ -57,7 +57,13 @@ export function hubFor(ctx: Context, signal: AbortSignal = new AbortController()
     async call(tool, input, account) {
       if (signal.aborted) throw new AppError("interrupted", "The step was cancelled");
       const args = account && account !== DEFAULT_ACCOUNT ? { ...input, account } : input;
-      return client.call(tool, args);
+      const result = await client.call(tool, args);
+      // Ri answers an account that needs signing in again as a result, not an error,
+      // and the kit's client passes it on. It's a setup state for that account.
+      const status = result && typeof result === "object" ? (result as { status?: unknown }).status : undefined;
+      if (status === "authorization_required" || status === "additional_permission_required" || status === "choose_connection_method")
+        throw new SetupRequired(`Reconnect this account in Ri. ${String((result as { message?: unknown }).message ?? "")}`.trim().slice(0, 300));
+      return result;
     },
     close: () => client.close(),
   };
