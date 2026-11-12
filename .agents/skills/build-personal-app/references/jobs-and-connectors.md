@@ -1,0 +1,113 @@
+# Jobs and connectors: a worked example
+
+This example adds "Add the books my book club emails about, every morning" to the Reading Log. It reads Gmail through the person's hub (Ri) and runs on its own. The same code is exercised in the builder repository's tests/connectors.test.ts.
+
+## 1. Say what the app reads, and why
+
+In src/app.ts, on the application:
+
+```ts
+connectors: {
+  purpose: "to add the books your book club emails about",
+  capabilities: ["mail.read"],          // "mail.read" and "calendar.read" exist today
+},
+```
+
+Settings then shows a "Your accounts through Ri" section with this purpose and a Connect button. Connecting opens Ri's consent screen, where the person chooses which accounts and tools the app gets. Ri enforces that grant, not the app. The token is kept encrypted in the installation's credential slot, so jobs can use it while nobody is signed in. Portable backups omit it.
+
+The hub's address can be preset with `APP_HUB_URL` (for example `http://127.0.0.1:<Ri's port>/api/integrations/mcp`), which `serve --install` records in the service's config.env.
+
+## 2. An action that imports, with a checkpoint
+
+```ts
+import { connectors, defineAction, stableId } from "@app-builder/core";
+
+defineAction({
+  name: "import_book_club", title: "Import book club picks", description: "Add books the book club emailed about.",
+  input: z.object({}), output: z.object({ imported: z.number(), summary: z.string() }),
+  effect: "write", retry: "safe", audience: ["user"],
+  handler: async (ctx) => {
+    const mail = connectors(ctx).mail();
+    const since = typeof ctx.job?.checkpoint === "string" ? ctx.job.checkpoint : undefined;
+    let imported = 0, newest = since;
+    for (let cursor: string | undefined, first = true; first || cursor; first = false) {
+      const page = await mail.search({ from: "club@books.example", after: since, limit: 20, cursor, withBody: true });
+      for (const message of page.messages) {
+        // A stable id from the source: a retried run saves each book once.
+        const id = await stableId("book-club:" + message.id);
+        const saved = await ctx.platform.db.insert(books).values({ id, userId: ctx.viewer.id, title: message.subject, /* … */ })
+          .onConflictDoNothing().returning();
+        imported += saved.length;
+        if (message.date && (!newest || message.date > newest)) newest = message.date;
+      }
+      cursor = page.cursor;
+    }
+    // Move the checkpoint only after the records are stored.
+    if (newest) await ctx.job?.saveCheckpoint(newest);
+    return { imported, summary: `Added ${imported} book club ${imported === 1 ? "pick" : "picks"}.` };
+  },
+}),
+```
+
+The capability shapes don't depend on the source:
+- `MailMessage` is `{ id, threadId?, from, to, cc, subject, date, snippet, text?, labels }`.
+- `CalendarEvent` is `{ id, title, start, end, allDay, location?, status?, url?, joinUrl? }`.
+- `connectors(ctx).call(name, args)` reaches any other hub tool by its own name and returns the hub's own shape, for example `gmail__send_email`. List those tool names in `connectors.tools`.
+
+## 3. The job
+
+```ts
+import { defineJob } from "@app-builder/core";
+
+jobs: [defineJob({ name: "import_book_club", title: "Book club picks", schedule: "daily at 07:00", action: "import_book_club" })],
+```
+
+**Schedule forms:**
+- `"daily at 07:00"`
+- `"weekly on monday at 07:00"`
+- `"hourly at :15"`
+- `"every 30 minutes"` (at least 5 minutes, dividing a day evenly)
+
+Times are in the installation's time zone. On the Node service that's the computer's zone; on Cloudflare it's UTC until the person picks one in Settings. Days when the clocks change are handled.
+
+**The app runs its own jobs.** The Node service checks every 30 seconds. A Worker checks from its five-minute cron trigger; keep `"*/5 * * * *"` in wrangler.jsonc. Settings shows each job's schedule, next run, last run and result, with Run now.
+
+**What the runner guarantees:**
+- **Each run has an ID**, the job plus its scheduled time. A duplicate wake-up does nothing, and a job has one unfinished run at a time.
+- **Missed runs run once.** When the Mac wakes after three missed mornings, the job runs once. A newly declared job has missed nothing.
+- **Checkpoints and waiting runs are stored in the app's database** and survive restarts. `saveCheckpoint` works only for the runner that holds the run. A runner that stalled and lost the run gets `LeaseLost`, and its work stops.
+
+**How failures show up:**
+
+| What happened | Thrown as | What the run does |
+| --- | --- | --- |
+| Ri is unreachable or failing | `SourceUnavailable` | Waits with growing delays, then retries. The checkpoint stays. |
+| Not connected, access revoked, tool not granted, or an account must be chosen | `SetupRequired` | Fails with a message saying what to do. The checkpoint stays, and Settings shows the hub as needing reconnection. |
+| A write that reaches outside needs approval in Ri | `ApprovalPending` | Waits, also across restarts. Every two minutes it re-checks that the tool is still granted, then retries the identical call; a week without approval fails. |
+| Anything else | | Fails with the error's message. The checkpoint stays. |
+
+Throw `SourceUnavailable` or `SetupRequired` from your own code when a source you call yourself behaves that way.
+
+## 4. Fixtures for tests and change checks
+
+Write fixtures/connectors.json in the capability shapes:
+
+```json
+{
+  "mail": { "messages": [
+    { "id": "m1", "from": { "name": "Book Club", "email": "club@books.example" }, "to": [], "cc": [],
+      "subject": "Next pick: Dune", "date": "2026-11-10T09:00:00.000Z", "snippet": "Dune", "text": "We're reading Dune.", "labels": [] }
+  ] },
+  "calendar": { "events": [] },
+  "tools": { "gmail__send_email": { "approval": true } }
+}
+```
+
+With `APP_CONNECTORS=fixtures` (and optionally `APP_CONNECTOR_FIXTURES=<file>`), the app serves connector calls from this file, using the hub's tool names. `change` and `serve --install` always check with fixtures. In tests, build the platform with `connectors: fixtureSource(data)`, and drive the runner with `runDueJobs(app, platform, { now: () => … })` to check a run, a duplicate wake-up, a failing source and a restart. Setting `"unavailable": true` or `"revoked": true` in the fixtures exercises the retry and setup states.
+
+## 5. Rules
+
+- Read outside services only through `connectors(ctx)`. Never ask for Google or other upstream tokens, and never use Ri's credentials.
+- Ask once, for the app. The grant is per app and works the same from a button, a job or a chat.
+- Keep imported records app-owned with stable ids. Revoking the hub stops future calls, and the records stay.
+- Never return connector tokens or credential values in action outputs, loader data or MCP context.

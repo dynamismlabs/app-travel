@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS owner_handoff (id INTEGER PRIMARY KEY CHECK(id=1), code_hash TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL);
+INSERT INTO _migrations (id,checksum,applied_at) VALUES ('core-0004','d8a0486a942072e61991a48c41e70a877040b8f9d172d22e35b338c08d1ddf7e',CURRENT_TIMESTAMP);

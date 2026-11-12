@@ -1,0 +1,19 @@
+# Travel
+
+Run pnpm dev for the local UI, pnpm build for production, and pnpm start for the built Node server. The parent workspace builds the core first. An exported app carries its own pinned core package in vendor/.
+
+App identity is in app.config.ts. Actions and migrations are in src/app.ts. The Drizzle schema is in src/schema.ts. The web UI and MCP tools call those same actions through the core. list_books filters by the current viewer. save_book keeps a device-generated ID so retries retain one record. update_book uses expectedUpdatedAt to prevent overwriting a newer edit.
+
+Data lives under ~/.local/share/<app-id> or APP_DATA_DIR. Use a temporary APP_DATA_DIR for tests. Local owner mode is available on loopback. Enable sign-in in Settings before sharing the app, which transfers existing local records to the first account; a restore elsewhere prints a handoff code instead. Every assistant connects with OAuth and sees what the person chose for it on the consent screen (this app has no sources, so only read or also write).
+
+Append migrations when changing the schema. Preserve existing record IDs. Verify saved records after a restart and after migration. The core version is pinned in package.json and pnpm-lock.yaml.
+
+To run it as the person's service, commit and run `pnpm exec app-builder serve --install`; to change a running app, commit and run `pnpm exec app-builder change`, which checks the commit in a separate copy and switches only when the checks pass (see .agents/skills/build-personal-app/references/run-connect-change.md). Never run the app from this folder against the person's data, and never start a second server on its data directory.
+
+Use pnpm typecheck and pnpm test for this app; test data is disposable. MCP tests need a connection's token: createTestConnection from @app-builder/core/node. Build regenerates migrations/ and dist/contract.json. Deploy with pnpm run deploy (pnpm deploy is pnpm's own command). See README.md for Docker, user-service install/uninstall, backups and an empty-target Cloudflare move. All three targets use the same app schema and action policies.
+
+Core 0.2.0 supplies sign-in, MCP OAuth with a choice per connection, the shared caller, offline saving, declared jobs and the connector client. This starter declares no sources, jobs or connectors; add them as in .agents/skills/build-personal-app/references/jobs-and-connectors.md. A generated app records its starter version in package.json. The build skill is installed in .agents/skills/build-personal-app on export. Inside the builder repository it lives under skills/.
+
+Assistants that draw MCP Apps views (ChatGPT, Claude, Ri) get two render tools. show_books (src/app.ts) draws a card of books, by ids or a status filter, where the person can change a book's status; BooksCard in src/screens.tsx draws it. open_reading_log, added by the core, opens the whole app full screen. list_books and the other actions are data tools and draw nothing. The view reaches nothing on the network and runs in a scripts-only sandbox, so it uses Form, dialogs and host tool calls. The selected book publishes its id and title via client.select (a fixed, bounded shape) and clears on leaving the view; changes made in the view are reported with client.didChange. MCP hosts receive it only when they support MCP Apps. A separate browser has no automatic chat handoff. Ri remains optional. React Router, one core package and the Reading Log starter are provisional defaults; public names come from the builder's identity.ts.
+
+The SSR web app uses src/root.tsx for its authorized initial loader, src/routes.ts for framework routes and src/screens.tsx for editable screens. src/main.tsx bundles the offline shell and MCP view. Keep loader data free of platform objects and credentials. Never cache personalized HTML. Store retained external credentials using the core backend vault; restore requires reconnection.
