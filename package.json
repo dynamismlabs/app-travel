@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "node scripts/preview.mjs",
-    "fixtures": "tsx scripts/write-fixtures.ts"
+    "fixtures": "tsx scripts/write-fixtures.ts",
+    "test:view": "pnpm build && vitest run tests/view.browser.test.ts"
   },
   "dependencies": {
     "@app-builder/core": "file:vendor/app-builder-core-0.2.0.tgz",

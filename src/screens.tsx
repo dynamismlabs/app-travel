@@ -25,26 +25,26 @@ export function Travel() {
 // ─── Cards for show_* ───────────────────────────────────────────────────────
 
 const CARD_CSS = `
-.tr-card { font-family: var(--ri-font); color: var(--ri-text); }
-.tr-card__meta { font-size: 12px; color: var(--ri-muted); margin: 0; }
-.tr-card__days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.tr-card__day h2 { font-size: 12px; font-weight: 650; margin: 0 0 4px; }
-.tr-card__day h2 span { font-weight: 450; color: var(--ri-muted); margin-left: 6px; }
-.tr-card__items { list-style: none; margin: 0; padding: 0; }
-.tr-card__item { display: grid; grid-template-columns: 4.25rem 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--ri-border); font-size: 13px; }
-.tr-card__item:last-child { border-bottom: 0; }
-.tr-card__time { color: var(--ri-muted); font-variant-numeric: tabular-nums; }
-.tr-card__time small { display: block; font-size: 10px; }
-.tr-card__title { overflow-wrap: anywhere; }
-.tr-card__title small { display: block; color: var(--ri-muted); font-size: 11px; }
-.tr-card__flag { color: var(--ri-warn); font-size: 12px; margin: 0; }
-.tr-card__rows { list-style: none; margin: 0; padding: 0; }
-.tr-card__row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ri-border); }
-.tr-card__row:last-child { border-bottom: 0; }
-.tr-card__row button { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; }
-.tr-card__row strong { display: block; font-size: 14px; font-weight: 600; }
-.tr-card__row span { font-size: 12px; color: var(--ri-muted); }
-.tr-card__compare { font-size: 12px; color: var(--ri-muted); margin: 4px 0 0; }
+.tv-card { font-family: var(--ri-font); color: var(--ri-text); }
+.tv-card__meta { font-size: 12px; color: var(--ri-muted); margin: 0; }
+.tv-card__days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.tv-card__day h2 { font-size: 12px; font-weight: 650; margin: 0 0 4px; }
+.tv-card__day h2 span { font-weight: 450; color: var(--ri-muted); margin-left: 6px; }
+.tv-card__items { list-style: none; margin: 0; padding: 0; }
+.tv-card__item { display: grid; grid-template-columns: 4.25rem 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--ri-border); font-size: 13px; }
+.tv-card__item:last-child { border-bottom: 0; }
+.tv-card__time { color: var(--ri-muted); font-variant-numeric: tabular-nums; }
+.tv-card__time small { display: block; font-size: 10px; }
+.tv-card__title { overflow-wrap: anywhere; }
+.tv-card__title small { display: block; color: var(--ri-muted); font-size: 11px; }
+.tv-card__flag { color: var(--ri-warn); font-size: 12px; margin: 0; }
+.tv-card__rows { list-style: none; margin: 0; padding: 0; }
+.tv-card__row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ri-border); }
+.tv-card__row:last-child { border-bottom: 0; }
+.tv-card__row button { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; }
+.tv-card__row strong { display: block; font-size: 14px; font-weight: 600; }
+.tv-card__row span { font-size: 12px; color: var(--ri-muted); }
+.tv-card__compare { font-size: 12px; color: var(--ri-muted); margin: 4px 0 0; }
 `;
 
 function useCardStyles() {
@@ -66,20 +66,20 @@ export function TripCard({ data }: { data: { title: string; detail: TripDetail |
   const shown = days.slice(0, 10);
   return (
     <ViewCard title={data.title} count={detail.trip.dateLabel} footer={days.length > shown.length ? `${days.length - shown.length} more days in ${client.config.name}.` : undefined}>
-      <div className="tr-card">
-        <p className="tr-card__meta">{detail.bookings.length} booking{detail.bookings.length === 1 ? "" : "s"} recorded{detail.trip.destinations.length ? ` · ${detail.trip.destinations.join(", ")}` : ""}</p>
-        {gaps.slice(0, 3).map((gap) => <p key={gap.key} className="tr-card__flag">{gap.message}</p>)}
-        {detail.review.length > 0 && <p className="tr-card__flag">{detail.review.length === 1 ? "One item waits in Review." : `${detail.review.length} items wait in Review.`}</p>}
+      <div className="tv-card">
+        <p className="tv-card__meta">{detail.bookings.length} booking{detail.bookings.length === 1 ? "" : "s"} recorded{detail.trip.destinations.length ? ` · ${detail.trip.destinations.join(", ")}` : ""}</p>
+        {gaps.slice(0, 3).map((gap) => <p key={gap.key} className="tv-card__flag">{gap.message}</p>)}
+        {detail.review.length > 0 && <p className="tv-card__flag">{detail.review.length === 1 ? "One item waits in Review." : `${detail.review.length} items wait in Review.`}</p>}
         {shown.length ? (
-          <ol className="tr-card__days">
+          <ol className="tv-card__days">
             {shown.map((day) => (
-              <li key={day.date} className="tr-card__day">
+              <li key={day.date} className="tv-card__day">
                 <h2>{day.label}{day.zoneLine ? <span>{day.zoneLine}</span> : null}</h2>
-                <ul className="tr-card__items">
+                <ul className="tv-card__items">
                   {day.items.slice(0, 8).map((item) => (
-                    <li key={item.id} className="tr-card__item">
-                      <span className="tr-card__time">{item.time ?? "All day"}{item.zoneLabel ? <small>{item.zoneLabel}</small> : null}</span>
-                      <span className="tr-card__title">{item.title}{item.status !== "confirmed" ? ` (${item.status})` : ""}<small>{item.subtitle}</small></span>
+                    <li key={item.id} className="tv-card__item">
+                      <span className="tv-card__time">{item.time ?? "All day"}{item.zoneLabel ? <small>{item.zoneLabel}</small> : null}</span>
+                      <span className="tv-card__title">{item.title}{item.status !== "confirmed" ? ` (${item.status})` : ""}<small>{item.subtitle}</small></span>
                     </li>
                   ))}
                 </ul>
@@ -100,9 +100,9 @@ export function TripsCard({ data }: { data: { title: string; trips: Trip[]; more
   return (
     <ViewCard title={data.title} count={data.trips.length ? `${data.trips.length}${data.more ? "+" : ""}` : undefined} footer={data.more ? `More in ${client.config.name}.` : undefined}>
       {data.trips.length ? (
-        <ul className="tr-card tr-card__rows">
+        <ul className="tv-card tv-card__rows">
           {data.trips.map((trip) => (
-            <li key={trip.id} className="tr-card__row">
+            <li key={trip.id} className="tv-card__row">
               <button type="button" onClick={() => client.select({ id: trip.id, title: `${trip.title} trip, ${trip.dateLabel}` })}>
                 <strong>{trip.title}</strong>
                 <span>{trip.dateLabel} · {trip.bookingCount} booking{trip.bookingCount === 1 ? "" : "s"}{trip.attention ? ` · ${trip.attention}` : ""}</span>
@@ -127,13 +127,13 @@ export function ReviewCard({ data }: { data: { title: string; items: ReviewItem[
   return (
     <ViewCard title={data.title} count={items.length ? `${items.length}${data.more ? "+" : ""}` : undefined} footer={items.length ? `Decide each one in ${client.config.name}'s Review.` : undefined}>
       {items.length ? (
-        <ul className="tr-card tr-card__rows">
+        <ul className="tv-card tv-card__rows">
           {items.map((item) => (
-            <li key={item.id} className="tr-card__row">
+            <li key={item.id} className="tv-card__row">
               <button type="button" onClick={() => client.select({ id: item.id, title: item.headline })}>
                 <strong>{item.headline}</strong>
                 <span>{item.reason}</span>
-                {item.comparison.slice(0, 2).map((row) => <p key={row.field} className="tr-card__compare">{row.label}: {row.current} now, {row.proposed} in the newer source</p>)}
+                {item.comparison.slice(0, 2).map((row) => <p key={row.field} className="tv-card__compare">{row.label}: {row.current} now, {row.proposed} in the newer source</p>)}
               </button>
             </li>
           ))}

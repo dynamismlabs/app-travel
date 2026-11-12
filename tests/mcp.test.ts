@@ -26,7 +26,9 @@ let dataDir: string;
 beforeAll(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "travel-mcp-"));
   delete process.env.APP_URL;
-  running = await serveApp(application, { root, dataDir, port: 0, onStop: async () => { closeTravelDatabases(); } });
+  // The safe-change copy tests before it builds: without dist/mcp.html the core would offer no view tools.
+  const viewHTML = fs.existsSync(path.join(root, "dist/mcp.html")) ? undefined : "<!doctype html><title>Travel</title>";
+  running = await serveApp({ ...application, ...(viewHTML ? { viewHTML } : {}) }, { root, dataDir, port: 0, onStop: async () => { closeTravelDatabases(); } });
   origin = running.platform.baseURL;
   await seedPreview(running.platform);
 });
