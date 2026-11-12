@@ -1,18 +1,11 @@
-import { createRequestHandler } from "react-router";
-import serverBuild from "virtual:app-builder/ssr";
-import { createApp } from "@app-builder/core";
-import { createWorkerPlatform, runScheduled } from "@app-builder/core/worker";
-import { application } from "./app";
-import viewHTML from "../dist/mcp.html";
-const render = createRequestHandler(serverBuild, "production");
+// Travel runs as a service on the person's computer only. Its writes are
+// synchronous SQLite transactions on its own connection to the app's database
+// (src/db/connection.ts), which Cloudflare D1 can't offer. The kit's build
+// always bundles a Worker, so this one says so instead of serving Travel.
+// See docs/parity.md ("Runs on Cloudflare").
 export default {
-  // The nightly backup and the app's own jobs (wrangler.jsonc lists both cron triggers).
-  scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(runScheduled(application, env, controller.cron)); },
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    if (/^\/(assets\/|offline\.html$|sw\.js$|manifest\.webmanifest$|icon\.svg$)/.test(new URL(request.url).pathname)) return env.ASSETS.fetch(request);
-    const platform = createWorkerPlatform(env);
-    const app = createApp({ ...application, viewHTML }, () => platform);
-    app.all("*", (c) => render(c.req.raw, { platform }));
-    return app.fetch(request, env, ctx);
+  scheduled() { /* No jobs run here. */ },
+  fetch() {
+    return new Response("Travel runs as a service on your computer, not on Cloudflare. Install it with app-builder serve --install.", { status: 501, headers: { "content-type": "text/plain; charset=utf-8" } });
   },
 };
