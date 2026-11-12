@@ -1,0 +1,185 @@
+{
+  "mail": {
+    "messages": [
+      {
+        "id": "fx-flight-lisbon",
+        "threadId": "fx-flight-lisbon",
+        "from": {
+          "name": "Riverline Air",
+          "email": "no-reply@riverline-air.example"
+        },
+        "to": [
+          {
+            "name": "Alex Rivera",
+            "email": "alex.rivera@example.test"
+          }
+        ],
+        "cc": [],
+        "subject": "Your Riverline Air booking is confirmed",
+        "date": "2026-10-12T15:04:00.000Z",
+        "snippet": "Riverline Air Booking confirmed Confirmation number: RA-7416 Passenger: RIVERA/ALEX MR Flight RA 204 Departure: Denver (DEN) Mon, Nov 9, 2026 17:55 Arrival:",
+        "text": "Riverline Air\nBooking confirmed\n\nConfirmation number: RA-7416\nPassenger: RIVERA/ALEX MR\n\nFlight RA 204\nDeparture: Denver (DEN)  Mon, Nov 9, 2026  17:55\nArrival: Lisbon (LIS)  Tue, Nov 10, 2026  08:40\nEconomy, seat 23C\n\nFlight RA 205\nDeparture: Lisbon (LIS)  Sat, Nov 14, 2026  13:30\nArrival: Denver (DEN)  Sat, Nov 14, 2026  18:20\n\nManage your booking at any time. This is a fictional example message.",
+        "labels": [
+          "INBOX"
+        ]
+      },
+      {
+        "id": "fx-hotel-lisbon",
+        "threadId": "fx-hotel-lisbon",
+        "from": {
+          "name": "Riverside House",
+          "email": "reservations@riverside-house.example"
+        },
+        "to": [
+          {
+            "name": "Alex Rivera",
+            "email": "alex.rivera@example.test"
+          }
+        ],
+        "cc": [],
+        "subject": "Your stay at Riverside House is confirmed",
+        "date": "2026-10-14T09:12:00.000Z",
+        "snippet": "Riverside House Thank you for booking with us. Booking reference: RH-4821 Guest name: Alex Rivera Check-in: Tue, Nov 10, 2026 (from 14:00) Check-out: Sat, Nov ",
+        "text": "Riverside House\nThank you for booking with us.\n\nBooking reference: RH-4821\nGuest name: Alex Rivera\nCheck-in: Tue, Nov 10, 2026 (from 14:00)\nCheck-out: Sat, Nov 14, 2026 (until 11:00)\n4 nights\nRoom: Deluxe double room\nAddress: Rua da Prata 112, 1100-420 Lisbon, Portugal\n\nFree cancellation until Nov 3, 2026. This is a fictional example message.",
+        "labels": [
+          "INBOX"
+        ]
+      },
+      {
+        "id": "fx-dinner-lisbon",
+        "threadId": "fx-dinner-lisbon",
+        "from": {
+          "name": "Mesa",
+          "email": "tables@mesa-lisboa.example"
+        },
+        "to": [
+          {
+            "name": "Alex Rivera",
+            "email": "alex.rivera@example.test"
+          }
+        ],
+        "cc": [],
+        "subject": "Your table at Mesa is confirmed",
+        "date": "2026-10-14T11:20:00.000Z",
+        "snippet": "Mesa We look forward to welcoming you for dinner. Name: Alex Rivera Date: Tuesday, November 10, 2026 Time: 19:00 Table for one Address: Rua dos Fanqueiros 41, ",
+        "text": "Mesa\nWe look forward to welcoming you for dinner.\n\nName: Alex Rivera\nDate: Tuesday, November 10, 2026\nTime: 19:00\nTable for one\nAddress: Rua dos Fanqueiros 41, Lisbon\nConfirmation: MS-1834\n\nThis is a fictional example message.",
+        "labels": [
+          "INBOX"
+        ]
+      },
+      {
+        "id": "fx-train-portland",
+        "threadId": "fx-train-portland",
+        "from": {
+          "name": "Coast Line Rail",
+          "email": "tickets@coastline-rail.example"
+        },
+        "to": [
+          {
+            "name": "Alex Rivera",
+            "email": "alex.rivera@example.test"
+          }
+        ],
+        "cc": [],
+        "subject": "Your Coast Line train tickets",
+        "date": "2026-10-09T18:30:00.000Z",
+        "snippet": "Coast Line Rail Your tickets are confirmed. Booking reference: CL8842 Passenger: Alex Rivera Train: Coast Line 11 Departure: Seattle King Street Station, Fri, ",
+        "text": "Coast Line Rail\nYour tickets are confirmed.\n\nBooking reference: CL8842\nPassenger: Alex Rivera\nTrain: Coast Line 11\nDeparture: Seattle King Street Station, Fri, Dec 4, 2026 08:20\nArrival: Portland Union Station, Fri, Dec 4, 2026 11:55\nCoach 4, seat 12A\n\nThis is a fictional example message.",
+        "labels": [
+          "INBOX"
+        ]
+      },
+      {
+        "id": "fx-hotel-portland",
+        "threadId": "fx-hotel-portland",
+        "from": {
+          "name": "Alder Street Inn",
+          "email": "stay@alder-street-inn.example"
+        },
+        "to": [
+          {
+            "name": "Alex Rivera",
+            "email": "alex.rivera@example.test"
+          }
+        ],
+        "cc": [],
+        "subject": "Your stay at Alder Street Inn is confirmed",
+        "date": "2026-10-10T16:00:00.000Z",
+        "snippet": "Alder Street Inn Booking reference: ASI-30417 Guest name: Alex Rivera Check-in: Fri, Dec 4, 2026 (from 15:00) Check-out: Sun, Dec 6, 2026 (until 11:00) 2 nights",
+        "text": "Alder Street Inn\nBooking reference: ASI-30417\nGuest name: Alex Rivera\nCheck-in: Fri, Dec 4, 2026 (from 15:00)\nCheck-out: Sun, Dec 6, 2026 (until 11:00)\n2 nights\nAddress: 410 SW Alder Street, Portland, Oregon\n\nThis is a fictional example message.",
+        "labels": [
+          "INBOX"
+        ]
+      },
+      {
+        "id": "fx-newsletter",
+        "threadId": "fx-newsletter",
+        "from": {
+          "name": "Deals",
+          "email": "offers@shop.example"
+        },
+        "to": [],
+        "cc": [],
+        "subject": "Autumn deals for you",
+        "date": "2026-10-10T10:00:00.000Z",
+        "snippet": "Save on sweaters this week.",
+        "text": "Save on sweaters this week.",
+        "labels": [
+          "INBOX"
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "events": [
+      {
+        "id": "fx-cal-flight",
+        "title": "Flight RA 204 to Lisbon",
+        "start": "2026-11-10T00:55:00.000Z",
+        "end": "2026-11-10T08:40:00.000Z",
+        "allDay": false,
+        "status": "confirmed"
+      },
+      {
+        "id": "fx-cal-planning",
+        "title": "Quarterly planning",
+        "start": "2026-11-11T16:00:00.000Z",
+        "end": "2026-11-11T17:30:00.000Z",
+        "allDay": false,
+        "status": "confirmed"
+      },
+      {
+        "id": "fx-cal-birthday",
+        "title": "Sam's birthday dinner",
+        "start": "2026-12-05",
+        "end": "2026-12-06",
+        "allDay": true,
+        "status": "confirmed"
+      }
+    ]
+  },
+  "tools": {
+    "gmail__get_profile": {
+      "result": {
+        "emailAddress": "alex.rivera@example.test",
+        "historyId": "100"
+      }
+    },
+    "ri__create_task": {
+      "approval": true
+    },
+    "ri__get_task": {
+      "result": {
+        "id": "fx-task-1",
+        "title": "Fictional task"
+      }
+    },
+    "ri__extract_text": {
+      "result": {
+        "text": "Riverside House\nBooking reference: RH-4821\nGuest name: Alex Rivera\nCheck-in: Tue, Nov 10, 2026 (from 14:00)\nCheck-out: Sat, Nov 14, 2026 (until 11:00)",
+        "truncated": false,
+        "characters": 140
+      }
+    }
+  }
+}

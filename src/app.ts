@@ -560,6 +560,9 @@ const syncSources = act({
     // Hub-wide problems go to the kit's runner, so its retries and Settings status apply.
     if (ran.length && ran.every((step) => step.failure === "busy")) throw new SourceUnavailable(ran.at(-1)!.summary);
     if (ran.length && ran.every((step) => step.failure === "reconnect")) throw new SetupRequired(ran.at(-1)!.summary);
+    // Connected once and since revoked: the run fails, so Settings and the job's status say to connect again.
+    const idle = steps.at(-1);
+    if (!ran.length && idle && /connect this app again/i.test(idle.summary)) throw new SetupRequired(idle.summary);
     const summary = ran.length ? ran.map((step) => step.summary).filter(Boolean).slice(0, 4).join(". ") : steps.at(-1)?.summary ?? "Nothing to do.";
     return { steps: ran.length, read: total("read"), added: total("added"), review: total("review"), removed: total("removed"), summary: clip(summary, 600) };
   },

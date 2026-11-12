@@ -12,7 +12,7 @@
 import { AppError, accountSource, redact, transaction, type JobRecord } from "../lib/data.js";
 import type { Context } from "@app-builder/core";
 import { emailDomain, type MailHeaders } from "../lib/mail.js";
-import { calendarSyncStep, failureKind, gmailSyncStep, hubFor, HUB_TOOLS, newCalendarCheckpoint, type CalendarCheckpoint, type CalendarEvent, type Hub, type MailCheckpoint } from "../lib/sources.js";
+import { basicCalendarSyncStep, basicMailSyncStep, calendarSyncStep, failureKind, gmailSyncStep, hubFor, HUB_TOOLS, newCalendarCheckpoint, type CalendarCheckpoint, type CalendarEvent, type Hub, type MailCheckpoint } from "../lib/sources.js";
 import { createSources } from "./sources.js";
 import { parseConfirmation } from "../domain/parse/extract.js";
 import { aiExtract } from "./ai.js";
@@ -79,8 +79,11 @@ export function createSync(t: Travel, ctx: Context) {
     const buffered = new Set<string>();
     const apply = () => { for (const operation of pending.splice(0)) operation(); };
     let result: Awaited<ReturnType<typeof gmailSyncStep>>;
+    // Ri's Gmail tools give history, deletions, attachments and invitations. A hub with only the kit's mail capability gives search and text.
+    const tools = await hub.tools();
+    const full = tools.includes(HUB_TOOLS.read) && tools.includes(HUB_TOOLS.history) && tools.includes(HUB_TOOLS.profile);
     try {
-      result = await gmailSyncStep({
+      result = await (full ? gmailSyncStep : (options: Parameters<typeof gmailSyncStep>[0]) => basicMailSyncStep({ ...options, ctx }))({
         hub, account, checkpoint: stored.checkpoint as MailCheckpoint | null, windowDays: stored.historyDays, query: GMAIL_QUERY, deadline, now: t.now,
         seen: (id) => buffered.has(id) || mailIndex.seen(account, id),
         relevant: headerRelevant,
@@ -135,7 +138,10 @@ export function createSync(t: Travel, ctx: Context) {
     // The history range reaches back for past events. The future window covers trips planned up to a year ahead.
     const checkpoint = checkpoints[pending] ?? newCalendarCheckpoint(pending, Math.max(CALENDAR_PAST_DAYS, stored.historyDays), CALENDAR_FUTURE_DAYS, t.now());
     const events: CalendarEvent[] = [];
-    const result = await calendarSyncStep({ hub, account, checkpoint, now: t.now, ingest: (event) => { events.push(event); } });
+    const full = (await hub.tools()).includes(HUB_TOOLS.calendarSync);
+    const result = full
+      ? await calendarSyncStep({ hub, account, checkpoint, now: t.now, ingest: (event) => { events.push(event); } })
+      : await basicCalendarSyncStep({ ctx, account, checkpoint, now: t.now, ingest: (event) => { events.push(event); } });
     checkpoints[pending] = result.checkpoint;
     const complete = stored.calendars.every((id) => checkpoints[id]?.completedAt && !checkpoints[id]?.pageToken);
     const count = events.length;

@@ -10,7 +10,7 @@ import { z } from "zod/v3";
 import { AppError } from "../lib/data.js";
 import { accountSource, type AccessScope } from "../lib/data.js";
 import type { Context } from "@app-builder/core";
-import { accountsFromChoice, calendarCoverage, changeMailWindow, failureKind, hubFor, HUB_TOOLS, listCalendars, mailCoverage, mailProfile, type Hub, type MailCheckpoint, type SourceAccount } from "../lib/sources.js";
+import { accountsFromChoice, calendarCoverage, changeMailWindow, DEFAULT_ACCOUNT, failureKind, hubFor, HUB_TOOLS, listCalendars, mailCoverage, mailProfile, type Hub, type MailCheckpoint, type SourceAccount } from "../lib/sources.js";
 import { localDate } from "../lib/time.js";
 import { COLLECTION_LABELS, IMPORTS_SOURCE, MANUAL_SOURCE } from "../domain/model.js";
 import type { EvidenceRow } from "../db/repo.js";
@@ -233,10 +233,11 @@ export function createSources(t: Travel) {
         else if (failure !== "not_allowed") throw error;
       }
     };
-    if (tools.includes(HUB_TOOLS.profile) && (tools.includes(HUB_TOOLS.read) || tools.includes(HUB_TOOLS.search)))
-      await names("mail", async () => (await mailProfile(hub, null)).emailAddress);
-    if (tools.includes(HUB_TOOLS.calendarSync) && tools.includes(HUB_TOOLS.calendars))
-      await names("calendar", async () => (await listCalendars(hub, "")).find((calendar) => calendar.primary)?.id ?? null);
+    // A hub with only the kit's mail or calendar capability names no account: Travel uses "default".
+    if (tools.includes(HUB_TOOLS.search) && tools.includes(HUB_TOOLS.metadata))
+      await names("mail", async () => tools.includes(HUB_TOOLS.profile) ? (await mailProfile(hub, null)).emailAddress : DEFAULT_ACCOUNT);
+    if (tools.includes(HUB_TOOLS.calendarSync) || tools.includes(HUB_TOOLS.calendarList))
+      await names("calendar", async () => tools.includes(HUB_TOOLS.calendars) ? (await listCalendars(hub, "")).find((calendar) => calendar.primary)?.id ?? DEFAULT_ACCOUNT : DEFAULT_ACCOUNT);
     t.mutate(() => {
       for (const kind of ["mail", "calendar"] as const) {
         for (const account of found[kind]) {
@@ -260,6 +261,7 @@ export function createSources(t: Travel) {
     if (isFictional(account)) return { calendars: [{ id: "primary", summary: clip(stored.label ?? "Fictional calendar", 300), primary: true }], chosen: stored.calendars };
     const hub = hubFor(ctx);
     try {
+      if (!(await hub.tools()).includes(HUB_TOOLS.calendars)) return { calendars: [{ id: "primary", summary: "Main calendar", primary: true }], chosen: stored.calendars };
       const found = await listCalendars(hub, account);
       return { calendars: found.slice(0, 100).map((item) => ({ id: item.id, summary: clip(item.summary, 300), primary: item.primary })), chosen: stored.calendars };
     } catch (error) {

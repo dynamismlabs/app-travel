@@ -310,3 +310,24 @@ export function parseMetadata(raw: unknown): MailHeaders {
   };
 }
 
+
+/**
+ * A message from the kit's mail capability (`connectors(ctx).mail()`), which
+ * any hub offers: headers and plain text, without Gmail's MIME parts. It
+ * carries no attachments, invitations or list headers.
+ */
+export function fromCapabilityMessage(message: { id: string; threadId?: string; from: { name?: string; email: string } | null; to: { name?: string; email: string }[]; cc: { name?: string; email: string }[]; subject: string; date: string | null; snippet: string; text?: string; labels: string[] }, now = new Date()): MailMessage {
+  const address = (item: { name?: string; email: string }): MailAddress => ({ name: item.name ?? null, address: item.email, normalized: normalizeEmail(item.email) });
+  const from = message.from ? address(message.from) : null;
+  const text = (message.text ?? message.snippet ?? "").replace(/\r\n/g, "\n").replace(/\u0000/g, "").slice(0, 64_000);
+  const labelIds = message.labels ?? [];
+  const parsed: Omit<MailMessage, "digest"> = {
+    id: message.id, threadId: message.threadId ?? message.id, historyId: null,
+    receivedAt: message.date ?? now.toISOString(), labelIds, subject: message.subject.replace(/\s+/g, " ").trim().slice(0, 1000),
+    from, to: message.to.map(address), cc: message.cc.map(address), bcc: [], replyTo: [], dateHeader: message.date, messageId: null, inReplyTo: null, references: [], listId: null,
+    sent: labelIds.includes("SENT"), draft: labelIds.includes("DRAFT"), discarded: labelIds.includes("TRASH") || labelIds.includes("SPAM"),
+    bulkReasons: from && isNoReply(from.address) ? ["no-reply sender"] : [], text, textTruncated: (message.text ?? "").length > 64_000, fromHtml: false,
+    attachments: [], invite: null, snippet: message.snippet.slice(0, 500),
+  };
+  return { ...parsed, digest: sha256(JSON.stringify([parsed.id, parsed.subject, parsed.from?.normalized, parsed.to.map((a) => a.normalized), parsed.text, []])) };
+}

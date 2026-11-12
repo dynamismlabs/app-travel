@@ -11,7 +11,9 @@
     "db:migrate": "app-builder db migrate",
     "deploy": "app-builder deploy cloudflare",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/app.test.ts"
+    "test": "vitest run",
+    "preview": "node scripts/preview.mjs",
+    "fixtures": "tsx scripts/write-fixtures.ts"
   },
   "dependencies": {
     "@app-builder/core": "file:vendor/app-builder-core-0.2.0.tgz",
@@ -25,6 +27,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261104.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@react-router/dev": "7.18.5",
     "@tailwindcss/vite": "4.3.3",
     "@types/better-sqlite3": "7.6.13",

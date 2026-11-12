@@ -18,7 +18,7 @@
 import { z } from "zod/v3";
 import { ApprovalPending, SetupRequired, SourceUnavailable, connectors, type Context } from "@app-builder/core";
 import { AppError, nowIso, type SqlDatabase, transaction } from "./data.js";
-import { parseGmailMessage, parseMetadata, type MailHeaders, type MailMessage } from "./mail.js";
+import { fromCapabilityMessage, parseGmailMessage, parseMetadata, type MailHeaders, type MailMessage } from "./mail.js";
 
 // ─── The hub ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +32,8 @@ export const HUB_TOOLS = {
   attachment: "gmail__get_attachment",
   calendars: "google_calendar__list_calendars",
   calendarSync: "google_calendar__sync_events",
+  /** The kit's calendar capability (google_calendar__list_events), for hubs without sync tokens. */
+  calendarList: "google_calendar__list_events",
   createTask: "ri__create_task",
   getTask: "ri__get_task",
   aiText: "ri__ai_text",
@@ -306,6 +308,47 @@ export async function gmailSyncStep(options: MailSyncOptions): Promise<MailStepR
   return { checkpoint, more: true, lane, ...result };
 }
 
+/**
+ * One bounded step through the kit's mail capability, for a hub that offers
+ * only that (search and plain text, like the kit's fixture source): one page
+ * of matching mail in the window, with bodies. Once the window is read, later
+ * steps search from the last scan. There is no history, so deleted mail isn't
+ * noticed, and there are no attachments or invitations to read.
+ */
+export async function basicMailSyncStep(options: MailSyncOptions & { ctx: Context }): Promise<MailStepResult> {
+  const now = options.now ?? (() => new Date());
+  const started = now();
+  let checkpoint = options.checkpoint ? mailCheckpointSchema.parse(options.checkpoint) : newMailCheckpoint(options.windowDays, started);
+  const complete = checkpoint.backfill.complete;
+  // An hour of overlap: the index skips anything already read.
+  const after = complete && checkpoint.history.checkedAt ? new Date(Date.parse(checkpoint.history.checkedAt) - 3_600_000).toISOString() : checkpoint.windowStart;
+  // No provider search syntax here: any hub's mail capability can answer this. Relevance is checked on the headers.
+  const page = await connectors(options.ctx).mail().search({
+    after, limit: options.maxBodies ?? 10, withBody: true,
+    ...(checkpoint.backfill.pageToken ? { cursor: checkpoint.backfill.pageToken } : {}),
+    ...(options.account && options.account !== DEFAULT_ACCOUNT ? { account: options.account } : {}),
+  });
+  let read = 0;
+  let skipped = 0;
+  for (const raw of page.messages) {
+    if (options.seen(raw.id)) continue;
+    const message = fromCapabilityMessage(raw, started);
+    if (options.relevant && !options.relevant({ id: message.id, threadId: message.threadId, labelIds: message.labelIds, subject: message.subject, from: message.from, to: message.to, cc: message.cc, snippet: `${message.snippet} ${message.text.slice(0, 2000)}`, listId: null })) {
+      options.skip(message.id, message.threadId);
+      skipped++;
+      continue;
+    }
+    await options.ingest(message);
+    read++;
+    if (!checkpoint.backfill.oldestAt || message.receivedAt < checkpoint.backfill.oldestAt) checkpoint = { ...checkpoint, backfill: { ...checkpoint.backfill, oldestAt: message.receivedAt } };
+  }
+  const at = now().toISOString();
+  checkpoint = page.cursor
+    ? { ...checkpoint, lane: "backfill", backfill: { ...checkpoint.backfill, pageToken: page.cursor, pages: checkpoint.backfill.pages + 1 }, lastSuccessAt: at }
+    : { ...checkpoint, lane: "history", backfill: { ...checkpoint.backfill, pageToken: null, pages: checkpoint.backfill.pages + 1, complete: true, completedAt: checkpoint.backfill.completedAt ?? at }, history: { historyId: null, pageToken: null, checkedAt: started.toISOString() }, lastSuccessAt: at };
+  return { checkpoint, more: !!page.cursor, lane: complete ? "history" : "backfill", read, skipped, removed: 0, yielded: false };
+}
+
 // ─── Calendar sync ───────────────────────────────────────────────────────────
 
 export const calendarCheckpointSchema = z.object({
@@ -414,6 +457,26 @@ export async function calendarSyncStep(options: {
   };
   return { checkpoint, more: !last, events: page.events.length, cancelled };
 }
+/**
+ * One Calendar page through the kit's calendar capability, for a hub that
+ * offers only that: events in the window, re-read in full each time, since
+ * there is no sync token. Cancelled events simply stop appearing.
+ */
+export async function basicCalendarSyncStep(options: { ctx: Context; account: string; checkpoint: CalendarCheckpoint; now?: () => Date; ingest(event: CalendarEvent): void | Promise<void> }): Promise<CalendarStepResult> {
+  const now = options.now ?? (() => new Date());
+  let checkpoint = calendarCheckpointSchema.parse(options.checkpoint);
+  if (checkpoint.completedAt && !checkpoint.pageToken) checkpoint = { ...newCalendarCheckpoint(checkpoint.calendarId, checkpoint.pastDays, checkpoint.futureDays, now()), resets: checkpoint.resets, lastSuccessAt: checkpoint.lastSuccessAt, completedAt: checkpoint.completedAt, timeZone: checkpoint.timeZone };
+  const page = await connectors(options.ctx).calendar().listEvents({
+    from: checkpoint.window.from, to: checkpoint.window.to, calendarId: checkpoint.calendarId, limit: 250,
+    ...(checkpoint.pageToken ? { cursor: checkpoint.pageToken } : {}),
+    ...(options.account && options.account !== DEFAULT_ACCOUNT ? { account: options.account } : {}),
+  });
+  for (const event of page.events) await options.ingest(calendarEventSchema.parse({ id: event.id, summary: event.title, start: event.start, end: event.end, allDay: event.allDay, status: event.status, location: event.location, htmlLink: event.url, joinUrl: event.joinUrl, cancelled: event.status === "cancelled" }));
+  const at = now().toISOString();
+  checkpoint = { ...checkpoint, pageToken: page.cursor ?? null, completedAt: page.cursor ? checkpoint.completedAt : at, lastSuccessAt: at };
+  return { checkpoint, more: !!page.cursor, events: page.events.length, cancelled: 0 };
+}
+
 export async function listCalendars(hub: Hub, account: string) {
   const result = z.object({ calendars: z.array(z.object({ id: z.string(), summary: z.string().optional(), primary: z.boolean().optional(), accessRole: z.string().optional(), hidden: z.boolean().optional() }).passthrough()) }).passthrough()
     .parse(await hub.call(HUB_TOOLS.calendars, {}, account));
