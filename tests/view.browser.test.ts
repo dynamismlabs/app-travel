@@ -9,7 +9,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createRequestHandler, type ServerBuild } from "react-router";
 import { build } from "esbuild";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { createTestConnection, serveApp, type RunningApp } from "@app-builder/core/node";
@@ -31,9 +33,15 @@ describe.skipIf(!chrome || !built)("Travel's view in a strict MCP Apps host", ()
     page.evaluate(([tool, input, theme]) => window.mcpFixture.mount("/__mcp-view__", tool, input, theme), [tool, input, theme] as const);
   const context = () => page.evaluate(() => JSON.stringify(window.mcpFixture.context ?? null));
 
+  // Travel's own page is server-rendered, as in src/node.ts.
+  const serve = async (dir: string) => {
+    const handler = createRequestHandler(await import(pathToFileURL(path.join(root, "dist/server/index.js")).href) as ServerBuild, "production");
+    return serveApp(application, { root, dataDir: dir, port: 0, render: (request, platform) => handler(request, { platform }), onStop: async () => { closeTravelDatabases(path.join(dir, "data.sqlite")); } });
+  };
+
   beforeAll(async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "travel-view-"));
-    running = await serveApp(application, { root, dataDir, port: 0, onStop: async () => { closeTravelDatabases(); } });
+    running = await serve(dataDir);
     await seedPreview(running.platform);
     const origin = running.platform.baseURL;
     const { accessToken } = await createTestConnection(running.platform, { name: "Strict host", sources: null, write: true });
@@ -94,5 +102,61 @@ describe.skipIf(!chrome || !built)("Travel's view in a strict MCP Apps host", ()
 
   it("never reached the network from the view, and raised no errors", () => {
     expect(failures).toEqual([]);
+  });
+
+  it("in Travel's own page: opens a booking, accepts a change in Review and compares ideas, at narrow and wide widths", async () => {
+    const own = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    const errors: string[] = [];
+    own.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await own.goto(running.platform.baseURL + "/");
+      await expect.poll(() => own.getByRole("heading", { level: 1 }).first().textContent(), { timeout: 20_000 }).toBe("Lisbon");
+      await own.getByRole("radio", { name: /Tue\s*10/ }).click();
+      await own.getByText("Local times in Lisbon WET").first().waitFor();
+      await own.getByRole("button", { name: /Riverside House\s+Check in, 4 nights/ }).click();
+      await own.getByText("Stay details").waitFor();
+      await own.getByText("Nov 10, 2026, 15:00 WET").first().waitFor();
+      await own.screenshot({ path: path.join(artifacts, "page-booking-narrow.png"), fullPage: true });
+      await own.setViewportSize({ width: 1300, height: 900 });
+      await own.goto(running.platform.baseURL + "/review");
+      await own.getByText("Your saved value").first().waitFor();
+      await own.getByRole("button", { name: "Use 16:00" }).click();
+      await expect.poll(() => own.getByText("Riverside House changed").count(), { timeout: 10_000 }).toBe(0);
+      await own.getByRole("tab", { name: "Trips" }).click();
+      await own.getByRole("button", { name: /Lisbon/ }).first().click();
+      await own.getByRole("tab", { name: /Ideas/ }).click();
+      await own.locator(".tr-idea", { hasText: "Sintra day tour" }).getByLabel("Compare").check();
+      await own.locator(".tr-idea", { hasText: "Fado evening in Alfama" }).getByLabel("Compare").check();
+      await own.getByRole("button", { name: /Compare 2 ideas/ }).click();
+      await own.getByText("They are not converted or added together", { exact: false }).first().waitFor();
+      await own.screenshot({ path: path.join(artifacts, "page-compare-wide.png"), fullPage: true });
+      await own.getByRole("button", { name: "Done" }).click();
+      await own.getByRole("tab", { name: /Bookings/ }).click();
+      await own.getByRole("table").waitFor();
+      const hotel = await own.getByRole("row", { name: /Riverside House/ }).textContent();
+      expect(hotel).toContain("Confirmed");
+      expect(errors).toEqual([]);
+    } finally { await own.context().close(); }
+  });
+
+  it("in Travel's own page on an empty install: adds a pasted booking and opens its trip", async () => {
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "travel-view-empty-"));
+    const empty = await serve(emptyDir);
+    const own = await (await browser.newContext({ viewport: { width: 1100, height: 900 } })).newPage();
+    try {
+      await own.goto(empty.platform.baseURL + "/");
+      await own.getByRole("heading", { name: "Bring your next trip together" }).waitFor({ timeout: 20_000 });
+      await own.getByRole("button", { name: "Add booking" }).first().click();
+      await own.getByLabel("Confirmation text").fill("Subject: Your stay at Riverside House\n\nRiverside House\nBooking reference: RH-4821\nGuest name: Alex Rivera\nCheck-in: Tue, Nov 10, 2026 (from 14:00)\nCheck-out: Sat, Nov 14, 2026 (until 11:00)\nAddress: Rua da Prata 112, Lisbon, Portugal");
+      await own.getByRole("button", { name: "Preview" }).click();
+      await own.getByText(/Riverside House, November 10 to 14, 2026/).first().waitFor({ timeout: 10_000 });
+      await own.getByRole("button", { name: "Apply" }).click();
+      await expect.poll(() => own.getByRole("heading", { level: 1 }).first().textContent(), { timeout: 10_000 }).toBe("Lisbon");
+      await own.screenshot({ path: path.join(artifacts, "page-added-booking.png"), fullPage: true });
+    } finally {
+      await own.context().close();
+      await empty.stop();
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
   });
 });

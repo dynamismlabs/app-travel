@@ -337,7 +337,7 @@ function TripOverview({ detail, onEditTrip, onFollowUp, onSelectDay }: { detail:
         {data.owner && trip.projection === "full" && (
           <ButtonRow>
             <Button size="sm" variant="quiet" onClick={onEditTrip}>Edit trip</Button>
-            <Menu label="Export" size="sm" variant="quiet" items={[{ id: "csv", label: "Itinerary as CSV" }, { id: "json", label: "Everything as JSON" }]} onSelect={(id) => void exportTrip(id as "csv" | "json")} />
+            {app.canDownload && <Menu label="Export" size="sm" variant="quiet" items={[{ id: "csv", label: "Itinerary as CSV" }, { id: "json", label: "Everything as JSON" }]} onSelect={(id) => void exportTrip(id as "csv" | "json")} />}
           </ButtonRow>
         )}
         <InlineError>{exportError}</InlineError>
