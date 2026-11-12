@@ -254,11 +254,19 @@ export function createSources(t: Travel) {
   const isFictional = (account: string) => !!repo.get("SELECT 1 AS yes FROM evidence WHERE account = ? AND fictional = 1 LIMIT 1", account) || account.startsWith("fictional-");
 
   async function calendars(ctx: Context, account: string) {
-    if (!accounts.get(account, "calendar")) throw new AppError("forbidden", "Allow this calendar for Travel in Ri first, then check for accounts again");
+    const stored = accounts.get(account, "calendar");
+    if (!stored) throw new AppError("forbidden", "Allow this calendar for Travel in Ri first, then check for accounts again");
+    // The fictional preview's calendar lives in Travel, not behind the hub.
+    if (isFictional(account)) return { calendars: [{ id: "primary", summary: clip(stored.label ?? "Fictional calendar", 300), primary: true }], chosen: stored.calendars };
     const hub = hubFor(ctx);
     try {
       const found = await listCalendars(hub, account);
-      return { calendars: found.slice(0, 100).map((item) => ({ id: item.id, summary: clip(item.summary, 300), primary: item.primary })), chosen: accounts.get(account, "calendar")?.calendars ?? ["primary"] };
+      return { calendars: found.slice(0, 100).map((item) => ({ id: item.id, summary: clip(item.summary, 300), primary: item.primary })), chosen: stored.calendars };
+    } catch (error) {
+      const failure = failureKind(error);
+      if (failure === "not_allowed" || failure === "reconnect" || failure === "choose_account") throw new AppError("forbidden", "Ri doesn't let Travel list this account's calendars now. Check Travel's access in Ri.");
+      if (failure === "busy") throw new AppError("busy", "Ri isn't answering right now. Try again shortly.");
+      throw new AppError("app_failed", "Travel couldn't list these calendars. Try again.");
     } finally { await hub.close(); }
   }
 

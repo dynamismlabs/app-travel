@@ -1,83 +1,157 @@
+/**
+ * Travel's screens: the whole app (src/view, behind the bridge in src/ui),
+ * the kit's Settings and consent screens, and one card per `show_*` tool.
+ * The same screens render in Travel's own page and inside an assistant.
+ */
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Link } from "react-router";
-import { useAction, useAppClient, ConnectionSettings, ConsentScreen, PendingSaves, Modal, Button, Form, ViewCard } from "@app-builder/core/react";
-import { appConfig } from "../app.config";
+import { Routes, Route } from "react-router";
+import { ConnectionSettings, ConsentScreen, useAppClient, ViewCard } from "@app-builder/core/react";
+import { TravelBridge } from "./ui/index.js";
+import { baseStyles, installStyles, STYLE_ELEMENT_ID } from "./ui/styles.js";
+import { TravelApp } from "./view/app.js";
+import { TRAVEL_CSS } from "./view/styles.js";
+import type { ReviewItem, Trip, TripDetail } from "./view/types.js";
 
-import type { books } from "./schema";
-type Book = typeof books.$inferSelect;
-
-const labels = { reading: "Reading", "want-to-read": "Want to read", finished: "Finished" };
-export function Library() {
-  const client = useAppClient();
-  const { data: books = [], loading, error, refresh } = useAction<Book[]>("list_books");
-  const [filter, setFilter] = useState("all");
-  const [query, setQuery] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [selected, setSelected] = useState<Book | null>(null);
-  const [saveError, setSaveError] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => () => client.select(null), [client.select]);
-  const visible = books.filter((book) => (filter === "all" || book.status === filter) && `${book.title} ${book.author}`.toLowerCase().includes(query.toLowerCase()));
-  const select = (book: Book | null) => { setSelected(book); client.select(book ? { id: book.id, title: book.title } : null); };
-  return <div className="workspace">
-    <header className="app-header"><Link to="/" className="brand"><span className="brand-mark" aria-hidden="true">▥</span>{appConfig.name}</Link>{!client.embedded && <Link className="settings-link" to="/settings">Settings</Link>}</header>
-    <main className="library">
-      <div className="page-heading"><div><p className="eyebrow">Your own little library</p><h1>Keep the good ones.</h1><p className="subtitle">Books you’re reading, books you loved, and what comes next.</p></div><Button className="primary" onClick={() => setAdding(true)}>＋ Add a book</Button></div>
-      <PendingSaves /><div className="toolbar"><div className="tabs" aria-label="Reading status">{[["all", "All books"], ...Object.entries(labels)].map(([value, label]) => <button key={value} className={filter === value ? "tab active" : "tab"} onClick={() => setFilter(value)}>{label}<span>{books.filter((book) => value === "all" || book.status === value).length}</span></button>)}</div><input className="search" type="search" placeholder="Find a book…" aria-label="Find a book" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-      {error && <p role="alert" className="error">{error} <button className="text-button" onClick={() => void refresh()}>Try again</button></p>}
-      {loading ? <p className="empty">Opening your shelves…</p> : visible.length ? <div className="book-list">{visible.map((book, index) => <button className={selected?.id === book.id ? "book-row selected" : "book-row"} key={book.id} onClick={() => select(book)}>
-        <span className={`book-cover cover-${index % 5}`} aria-hidden="true"><span>{book.title}</span><small>{book.author}</small></span>
-        <span className="book-copy"><strong>{book.title}</strong><span>{book.author || "Author unknown"}</span>{book.note && <p>{book.note}</p>}</span>
-        <span className={`status status-${book.status}`}>{labels[book.status]}</span><span className="row-arrow" aria-hidden="true">↗</span>
-      </button>)}</div> : <div className="empty-state"><span className="empty-book" aria-hidden="true">▥</span><h2>{query ? "No books found." : "Your next chapter starts here."}</h2><p>{query ? "Try another title or author." : "Add your first book, then leave a note worth coming back to."}</p>{!query && <Button className="primary" onClick={() => setAdding(true)}>Add your first book</Button>}</div>}
-      <footer className="library-footer"><span>{books.length} {books.length === 1 ? "book" : "books"} in your library</span><span>{client.localOwner ? "Saved on this computer" : "Your private collection"}</span></footer>
-    </main>
-    {selected && <aside className="detail-panel"><button className="close" aria-label="Close book" onClick={() => select(null)}>×</button><p className="eyebrow">From your library</p><h2>{selected.title}</h2><p className="detail-author">{selected.author}</p><label>Reading status<select value={selected.status} onChange={async (event) => {
-      try { const updated = await client.call<Book>("update_book", { ...selected, expectedUpdatedAt: selected.updatedAt, status: event.target.value }); select(updated); client.didChange(`Marked “${updated.title}” as ${labels[updated.status].toLowerCase()}`); await refresh(); }
-      catch (error) { setSaveError((error as Error).message); }
-    }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <Form onSubmit={async (form) => {
-        setBusy(true); setSaveError("");
-        try { const updated = await client.call<Book>("update_book", { ...selected, note: form.get("note"), expectedUpdatedAt: selected.updatedAt }); select(updated); client.didChange(`Updated the note on “${updated.title}”`); await refresh(); }
-        catch (error) { setSaveError((error as Error).message); } finally { setBusy(false); }
-      }} key={selected.updatedAt}><label>Your notes<textarea name="note" rows={8} defaultValue={selected.note} placeholder="A passage, a thought, a reason to remember…" /></label>{saveError && <p role="alert" className="error">{saveError}</p>}<Button className="primary" disabled={busy}>{busy ? "Saving…" : "Save note"}</Button></Form>
-    </aside>}
-    {adding && <Modal open={adding} onOpenChange={setAdding} title="Add a book"><Form onSubmit={async (form) => {
-      setBusy(true); setSaveError("");
-      try {
-        await client.save("save_book", { id: crypto.randomUUID(), title: form.get("title"), author: form.get("author"), status: form.get("status"), note: form.get("note") });
-        client.didChange(`Added “${String(form.get("title"))}”`);
-        setAdding(false); await refresh();
-      } catch (error) { setSaveError((error as Error).message); } finally { setBusy(false); }
-    }}><label>Title<input name="title" required maxLength={240} autoFocus placeholder="The book on your mind" /></label><label>Author<input name="author" maxLength={160} placeholder="Who wrote it?" /></label><label>Status<select name="status" defaultValue="want-to-read">{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>A note<textarea name="note" rows={3} placeholder="Optional. What drew you to this book?" /></label>{saveError && <p role="alert" className="error">{saveError}</p>}<Button className="primary" disabled={busy}>{busy ? "Saving…" : "Add to library"}</Button></Form></Modal>}
-  </div>;
+/** Every style Travel's screens use, for the server to render once. */
+export function TravelStyles() {
+  return <style id={STYLE_ELEMENT_ID} data-complete="" dangerouslySetInnerHTML={{ __html: `${baseStyles}\n${TRAVEL_CSS}\n${CARD_CSS}` }} />;
 }
 
-/** The card show_books draws in a chat: the books it named, each one's status changeable in place. */
-export function BooksCard({ data }: { data: { title: string; books: Book[]; more: boolean } }) {
-  const client = useAppClient();
-  const [items, setItems] = useState(data.books);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => { setItems(data.books); }, [data.books]);
-  useEffect(() => () => client.select(null), [client.select]);
-  return <ViewCard title={data.title} count={items.length ? `${items.length}${data.more ? "+" : ""}` : undefined} footer={data.more ? `More in your ${client.config.name}.` : undefined}>
-    {error && <p role="alert" className="error">{error}</p>}
-    {items.length ? <ul className="view-list">{items.map((book, index) => <li key={book.id} className={busy === book.id ? "view-row busy" : "view-row"}>
-      <span className={`book-cover mini cover-${index % 5}`} aria-hidden="true" />
-      <button type="button" className="view-row-body" onClick={() => client.select({ id: book.id, title: book.title })}><strong>{book.title}</strong><span>{book.author || "Author unknown"}</span></button>
-      <select aria-label={`Status of ${book.title}`} value={book.status} disabled={busy === book.id} onChange={async (event) => {
-        setBusy(book.id); setError("");
-        try {
-          const updated = await client.call<Book>("update_book", { ...book, expectedUpdatedAt: book.updatedAt, status: event.target.value });
-          setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
-          client.didChange(`Marked “${updated.title}” as ${labels[updated.status].toLowerCase()}`);
-        } catch (error) { setError((error as Error).message); } finally { setBusy(""); }
-      }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-    </li>)}</ul> : <p className="view-empty">No books match.</p>}
-  </ViewCard>;
+/** The whole app. */
+export function Travel() {
+  return <TravelBridge opener="open_view"><TravelApp /></TravelBridge>;
 }
+
+// ─── Cards for show_* ───────────────────────────────────────────────────────
+
+const CARD_CSS = `
+.tr-card { font-family: var(--ri-font); color: var(--ri-text); }
+.tr-card__meta { font-size: 12px; color: var(--ri-muted); margin: 0; }
+.tr-card__days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.tr-card__day h2 { font-size: 12px; font-weight: 650; margin: 0 0 4px; }
+.tr-card__day h2 span { font-weight: 450; color: var(--ri-muted); margin-left: 6px; }
+.tr-card__items { list-style: none; margin: 0; padding: 0; }
+.tr-card__item { display: grid; grid-template-columns: 4.25rem 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--ri-border); font-size: 13px; }
+.tr-card__item:last-child { border-bottom: 0; }
+.tr-card__time { color: var(--ri-muted); font-variant-numeric: tabular-nums; }
+.tr-card__time small { display: block; font-size: 10px; }
+.tr-card__title { overflow-wrap: anywhere; }
+.tr-card__title small { display: block; color: var(--ri-muted); font-size: 11px; }
+.tr-card__flag { color: var(--ri-warn); font-size: 12px; margin: 0; }
+.tr-card__rows { list-style: none; margin: 0; padding: 0; }
+.tr-card__row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ri-border); }
+.tr-card__row:last-child { border-bottom: 0; }
+.tr-card__row button { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; }
+.tr-card__row strong { display: block; font-size: 14px; font-weight: 600; }
+.tr-card__row span { font-size: 12px; color: var(--ri-muted); }
+.tr-card__compare { font-size: 12px; color: var(--ri-muted); margin: 4px 0 0; }
+`;
+
+function useCardStyles() {
+  useEffect(() => { installStyles(`${TRAVEL_CSS}\n${CARD_CSS}`); }, []);
+}
+
+/** show_trip: one trip's itinerary by local day, and what needs attention. */
+export function TripCard({ data }: { data: { title: string; detail: TripDetail | null; message: string | null } }) {
+  useCardStyles();
+  const client = useAppClient();
+  const detail = data.detail;
+  useEffect(() => {
+    if (detail) client.select({ id: detail.trip.id, title: `${detail.trip.title} trip, ${detail.trip.dateLabel}` });
+    return () => client.select(null);
+  }, [detail?.trip.id]);
+  if (!detail) return <ViewCard title={data.title}><p className="view-empty">{data.message}</p></ViewCard>;
+  const gaps = detail.coverage.gaps.filter((gap) => !gap.dismissed);
+  const days = detail.days.filter((day) => day.items.length);
+  const shown = days.slice(0, 10);
+  return (
+    <ViewCard title={data.title} count={detail.trip.dateLabel} footer={days.length > shown.length ? `${days.length - shown.length} more days in ${client.config.name}.` : undefined}>
+      <div className="tr-card">
+        <p className="tr-card__meta">{detail.bookings.length} booking{detail.bookings.length === 1 ? "" : "s"} recorded{detail.trip.destinations.length ? ` · ${detail.trip.destinations.join(", ")}` : ""}</p>
+        {gaps.slice(0, 3).map((gap) => <p key={gap.key} className="tr-card__flag">{gap.message}</p>)}
+        {detail.review.length > 0 && <p className="tr-card__flag">{detail.review.length === 1 ? "One item waits in Review." : `${detail.review.length} items wait in Review.`}</p>}
+        {shown.length ? (
+          <ol className="tr-card__days">
+            {shown.map((day) => (
+              <li key={day.date} className="tr-card__day">
+                <h2>{day.label}{day.zoneLine ? <span>{day.zoneLine}</span> : null}</h2>
+                <ul className="tr-card__items">
+                  {day.items.slice(0, 8).map((item) => (
+                    <li key={item.id} className="tr-card__item">
+                      <span className="tr-card__time">{item.time ?? "All day"}{item.zoneLabel ? <small>{item.zoneLabel}</small> : null}</span>
+                      <span className="tr-card__title">{item.title}{item.status !== "confirmed" ? ` (${item.status})` : ""}<small>{item.subtitle}</small></span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        ) : <p className="view-empty">No booking recorded for this trip yet.</p>}
+      </div>
+    </ViewCard>
+  );
+}
+
+/** show_trips: a list of trips with their dates and attention. */
+export function TripsCard({ data }: { data: { title: string; trips: Trip[]; more: boolean } }) {
+  useCardStyles();
+  const client = useAppClient();
+  useEffect(() => () => client.select(null), [client.select]);
+  return (
+    <ViewCard title={data.title} count={data.trips.length ? `${data.trips.length}${data.more ? "+" : ""}` : undefined} footer={data.more ? `More in ${client.config.name}.` : undefined}>
+      {data.trips.length ? (
+        <ul className="tr-card tr-card__rows">
+          {data.trips.map((trip) => (
+            <li key={trip.id} className="tr-card__row">
+              <button type="button" onClick={() => client.select({ id: trip.id, title: `${trip.title} trip, ${trip.dateLabel}` })}>
+                <strong>{trip.title}</strong>
+                <span>{trip.dateLabel} · {trip.bookingCount} booking{trip.bookingCount === 1 ? "" : "s"}{trip.attention ? ` · ${trip.attention}` : ""}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="view-empty">No trips match.</p>}
+    </ViewCard>
+  );
+}
+
+/**
+ * show_review: what waits in Review. The person decides each item in Travel,
+ * where the full comparison and choices are, so the card opens it.
+ */
+export function ReviewCard({ data }: { data: { title: string; items: ReviewItem[]; owner: boolean; more: boolean } }) {
+  useCardStyles();
+  const client = useAppClient();
+  const [items] = useState(data.items);
+  useEffect(() => () => client.select(null), [client.select]);
+  return (
+    <ViewCard title={data.title} count={items.length ? `${items.length}${data.more ? "+" : ""}` : undefined} footer={items.length ? `Decide each one in ${client.config.name}'s Review.` : undefined}>
+      {items.length ? (
+        <ul className="tr-card tr-card__rows">
+          {items.map((item) => (
+            <li key={item.id} className="tr-card__row">
+              <button type="button" onClick={() => client.select({ id: item.id, title: item.headline })}>
+                <strong>{item.headline}</strong>
+                <span>{item.reason}</span>
+                {item.comparison.slice(0, 2).map((row) => <p key={row.field} className="tr-card__compare">{row.label}: {row.current} now, {row.proposed} in the newer source</p>)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="view-empty">Nothing waits in Review.</p>}
+    </ViewCard>
+  );
+}
+
 /** Cards for the app's show_* tools. Anything else in an assistant draws the whole app. */
-export const viewCards = { show_books: BooksCard };
+export const viewCards = { show_trip: TripCard, show_trips: TripsCard, show_review: ReviewCard };
 
-export function AppScreens() { return <Routes><Route path="/" element={<Library />} /><Route path="/settings" element={<ConnectionSettings />} /><Route path="/oauth/consent" element={<ConsentScreen />} /><Route path="*" element={<Library />} /></Routes>; }
+export function AppScreens() {
+  return (
+    <Routes>
+      <Route path="/settings" element={<ConnectionSettings />} />
+      <Route path="/oauth/consent" element={<ConsentScreen />} />
+      <Route path="*" element={<Travel />} />
+    </Routes>
+  );
+}
