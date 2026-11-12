@@ -9,7 +9,6 @@
     "build": "app-builder build",
     "start": "app-builder serve",
     "db:migrate": "app-builder db migrate",
-    "deploy": "app-builder deploy cloudflare",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "node scripts/preview.mjs",
