@@ -1,6 +1,6 @@
 # Travel: parity with Ri's Travel app
 
-Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder. Ported November 12 on kit core 0.2.0. Moved November 16 to core 0.2.2 (kit `main` at `1713f6a`), which added the full app in every host (shared spec §5). Moved November 17 to kit `main` at `ff47742` (still core 0.2.2), with the kit's fixes for the gaps the ports found ([dynamismlabs/mcp-app-builder#10](https://github.com/dynamismlabs/mcp-app-builder/pull/10)). Tagged `v0.1.0`. For `v0.1.1`, moved to kit `main` at `a8e9b5d` (kit #11 to #13, still core 0.2.2), after Ri sent a provider's 404 or 410 with its code and status ([dynamismlabs/ri#7](https://github.com/dynamismlabs/ri/pull/7)). This lists every feature and behavior from the old README, AGENTS.md, plugin.json and tests, and whether it works here.
+Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder. Ported November 12 on kit core 0.2.0. Moved November 16 to core 0.2.2 (kit `main` at `1713f6a`), which added the full app in every host (shared spec §5). Moved November 17 to kit `main` at `ff47742` (still core 0.2.2), with the kit's fixes for the gaps the ports found ([dynamismlabs/mcp-app-builder#10](https://github.com/dynamismlabs/mcp-app-builder/pull/10)). Tagged `v0.1.0`. For `v0.1.1`, moved to kit `main` at `a8e9b5d` (kit #11 to #13, still core 0.2.2), after Ri sent a provider's 404 or 410 with its code and status ([dynamismlabs/ri#7](https://github.com/dynamismlabs/ri/pull/7)). For `v0.1.2`, moved to kit `main` at `023f92f` (kit #14 to #17, still core 0.2.2): Travel's transactions run on the core's `transaction()`, and Settings opens inside an assistant's view. This lists every feature and behavior from the old README, AGENTS.md, plugin.json and tests, and whether it works here.
 
 - **Works**: same behavior on the new path.
 - **Works in hosts**: works inside an assistant too, verified in the kit's strict test host (a scripts-only sandbox, no network, and Ri's rules for visibility, drafts, links, files and host links). Ri was then checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac (not a Ri Home in everyday use, which runs on another computer), on the web and, partly, in its desktop app, with dummy records only. These lines say what Ri did. ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
@@ -11,14 +11,25 @@ Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder.
 
 Everything Travel did in Ri works on the new path except one thing. The domain logic, data model, screens and almost all tests came over unchanged: trips, itineraries in local time, bookings, Review, corrections, coverage, ideas, imports, Gmail and Calendar sync, the AI fallback, follow-ups and export.
 
-On core 0.2.2 the whole app also works inside an assistant, verified in the kit's strict test host: Ask in chat, links and maps out, Export, Open in browser, opening at a trip or booking, the @ menu, and the person's own decisions kept from the model. Real hosts are the next check.
+On core 0.2.2 the whole app also works inside an assistant, verified in the kit's strict test host: Ask in chat, links and maps out, Export, Open in browser, Settings, opening at a trip or booking, the @ menu, and the person's own decisions kept from the model. Real hosts are the next check.
 
 **Still blocked:**
-1. **Travel can't run on Cloudflare** (kit gap). Its writes need transactions that read and write together, which the kit's database API doesn't offer, so Travel keeps its own synchronous connection on the Mac.
+1. **Travel can't run on Cloudflare** (kit gap). Its writes need transactions that read and write together. The core's `transaction()` gives them on Node only for now, so Travel declares itself Node-only (`platforms: ["node"]`).
 2. **Export inside Ri** (Ri's host). Ri doesn't save files from a view yet ([dynamismlabs/ri#2](https://github.com/dynamismlabs/ri/pull/2)). Until it does, Travel offers "Export in browser" there. It works in a host that saves files.
 3. **A host that ignores tool visibility** (that host's rule). Review decisions, deleting, imports and settings are view-only. A host that doesn't honor that would let its model call them. Travel's own access checks still apply. Ri honors it. ChatGPT and Claude are part of the real-host check.
 
 The other findings are things Travel works around itself that the kit or Ri should fix; they're under "What the kit and Ri should change".
+
+### What moved for v0.1.2 (kit #14 to #17)
+
+Each line is marked closed only where a Travel test or a run shows it.
+
+| Line | Was | Now |
+| --- | --- | --- |
+| Transactions for every write | Travel opened its own synchronous better-sqlite3 connection to the kit's `data.sqlite`, with its own `BEGIN IMMEDIATE` wrapper | Works, Node only: the core's `transaction(ctx, work)` on the kit's own connection, with the same rules. An inner transaction joins the outer one, and work must be synchronous. Each action's synchronous body is one transaction, and so are the cards, the @ menu, the source list and export. Actions that wait on Ri keep a transaction around each write between the calls. Travel's own connection is gone, and app.config.ts declares `platforms: ["node"]`. The revision triggers and search index are unchanged. `tests/transactions.test.ts` makes SQLite refuse the last write of a manual booking, an import, a Gmail page with its checkpoint, and deleting an account's data. Nothing earlier is kept, and every one of those tests fails with transactions turned off |
+| Settings inside an assistant | "Open Settings in browser" from a host | Works in hosts: verified in the test host. Settings opens inside the view, from the header beside Open in browser and from Sources. It lists the connections with the view's own marked, and removes another at once, while the view's own asks first. It also covers the Ri link and automations. The account and downloads stay in the browser, through Open in browser. The core's `read_settings` and `change_settings` are view-only, and the model's call is refused (`tests/view.browser.test.ts`) |
+| Builds during `upgrade` and `change` | Used whatever Node the shell had first | Works (kit #14): `upgrade` and `change` built with Node 24.2.0 from `local.travel`'s definition, as their `resolve` step says. Not run from a shell with another Node first |
+| Browser clients and add-only connections (kit #17) | None | Nothing changes for Travel. It marks no action `adds`, so its consent screen is the same. The core's migration `core-0010` came with the upgrade (`migrations/0_core-0010.sql`) |
 
 ### What moved for v0.1.1 (Ri #7, kit #11 to #13)
 
@@ -59,13 +70,13 @@ Each line is marked closed only where a Travel test or a run shows it.
 | Location kept in the host's address | Works differently: reopening started at `/` | Works in hosts: `open_travel` opens at a place, and host links move it |
 | Selection reaches the chat | Works differently: only one record's id and title | Works in hosts: the place, its path and filters, the selected booking or trip, and the ideas chosen to compare |
 | Entities with open paths (deep links) | None | Works in hosts: `records`, `open_travel`'s path, host links and the @ menu |
-| Sources: chats with access | Works differently, no way to Settings from a host | Works differently: "Open Settings in browser" from a host |
+| Sources: chats with access | Works differently, no way to Settings from a host | Works in hosts since v0.1.2: Settings opens inside the view |
 | Follow-ups waiting for approval | 5-minute single-use approval, retried every 2 minutes | Ri's approval IDs: an approved call stays open 24 hours; a declined one stops |
 | Kit findings 2 and 3 (app-only tools; messages, links and downloads) | Open | Closed by the kit. Finding 4 partly closed (approval IDs). Finding 9's "no starting address" closed. |
 
 **How this was checked** (all with fictional data):
-- 119 tests in 10 files: `pnpm test`, run two files at a time. The browser checks need a build and Chrome: `pnpm test:view`.
-- The core upgrades ran through the kit's `upgrade --core ~/dynamism/app-builder --json`. On November 16 Travel wasn't installed yet, so it only type-checked and tested, and its tests stopped it once (the fictional November trips had turned past, and the kit's approval timing had changed). Both are fixed in Travel. On November 17, to kit `ff47742`, it ran the full safe-change on the installed `local.travel`: install, typecheck, tests, build, rehearsal on a copy of the data, snapshot, switch and merge all passed, with no test to fix. For v0.1.1 the upgrade to kit `df533b0` rolled back at the switch: launchd loaded the new definition but never started it. Kit #13 fixed that, and the upgrade to kit `a8e9b5d` switched to `19bcb8c`.
+- 125 tests in 11 files: `pnpm test`, run two files at a time. The browser checks need a build and Chrome: `pnpm test:view`.
+- The core upgrades ran through the kit's `upgrade --core ~/dynamism/app-builder --json`. On November 16 Travel wasn't installed yet, so it only type-checked and tested, and its tests stopped it once (the fictional November trips had turned past, and the kit's approval timing had changed). Both are fixed in Travel. On November 17, to kit `ff47742`, it ran the full safe-change on the installed `local.travel`: install, typecheck, tests, build, rehearsal on a copy of the data, snapshot, switch and merge all passed, with no test to fix. For v0.1.1 the upgrade to kit `df533b0` rolled back at the switch: launchd loaded the new definition but never started it. Kit #13 fixed that, and the upgrade to kit `a8e9b5d` switched to `19bcb8c`. For v0.1.2 the upgrade to kit `023f92f` stopped at the tests, before anything changed: the contract test lists the view-only tools, and the core had added two. With the test updated, `change` switched to `598097c`.
 - On core 0.2.0, `serve --install --service process` passed every step and an outside MCP SDK client did the full OAuth flow against the installed service. Not repeated on 0.2.2; the in-process OAuth test passes on it.
 - The view ran in Chrome inside the kit's strict test host (`tests/support/view-host.ts`, the kit's `browser-host.ts`), matching the kit's own host tests. Travel's own page was checked at phone and desktop widths.
 - Hub features were tested against the kit's own fixture source and job runner, and against a fake of Ri's hub with Ri's tool names.
@@ -84,7 +95,7 @@ Each line is marked closed only where a Travel test or a run shows it.
 | Review: reservations without a trip, changes and cancellations, duplicates, extracted details | Works | |
 | Review compares recorded and proposed values with the source before anything changes | Works | "Use 16:00" checked in Chrome. |
 | Sources: accounts, imported files, history range, coverage, last update, pending and failed counts, pause, continue import, delete imported data | Works differently | Accounts are the ones Ri's hub lets Travel read. Sources asks Ri when it opens, and has "Check Ri for accounts". |
-| Sources: chats with access | Works differently | Each assistant connection and its access is in the kit's Settings, at `/settings`. Choices are made on Travel's consent screen when a place connects. Sources points there, and inside an assistant offers "Open Settings in browser". |
+| Sources: chats with access | Works differently, and in hosts: verified in the test host | Each assistant connection and its access is in the kit's Settings, at `/settings`. Choices are made on Travel's consent screen when a place connects. Sources points there. Inside an assistant, Settings opens in the view itself, and the view's header has it too. |
 | Sources: Travel settings (home zone, your names, AI fallback) | Works | |
 | Calendars to check, per calendar account | Works | |
 | Add booking: paste, file, or the manual form | Works | Paste-and-apply on an empty install checked in Chrome. |
@@ -247,10 +258,10 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 | Ri | Here | Status |
 | --- | --- | --- |
 | Runtime: Ri started the app on demand over its private IPC | The kit's Node server, run as the person's service (`serve --install`) | Works differently |
-| Kit updates | The kit's `upgrade --core` | Works: core 0.2.0 to 0.2.2 through the safe-change checks, then kit `ff47742` through the full safe-change on the installed service. Kit `df533b0` rolled back at the switch (launchd never started the new release). Kit `a8e9b5d` (#13) fixed that and switched cleanly. |
+| Kit updates | The kit's `upgrade --core` | Works: core 0.2.0 to 0.2.2 through the safe-change checks, then kit `ff47742` through the full safe-change on the installed service. Kit `df533b0` rolled back at the switch (launchd never started the new release). Kit `a8e9b5d` (#13) fixed that and switched cleanly. Kit `023f92f` stopped at Travel's contract test, then switched once it was updated. |
 | Backups and restores | The kit's `backup` and `restore` | Works since kit #10: Travel's revision triggers and booking search index come back, also from a backup an older core made (Travel's migrations put the triggers back). Tested, and the installed Travel's nightly backup was restored into a scratch folder. |
 | Records in `records.db` in Ri's instance folder (`node:sqlite`) | The kit's `data.sqlite`, with Travel's tables in kit migration `app-0001` | Works differently. Same data model. Ri's three migrations are one, since no old data exists. Ri's third migration only rewrote first-release review reasons, so it isn't carried and its test is dropped. |
-| Synchronous transactions for every write | Travel's own synchronous connection to the kit's `data.sqlite` | **Works, but Node only.** Blocked on Cloudflare (kit gap, finding 1). Still needed on core 0.2.2. |
+| Synchronous transactions for every write | The core's `transaction(ctx, work)` on the kit's own connection (since v0.1.2, before that Travel's own connection) | **Works, but Node only.** Blocked on Cloudflare until the kit can run it there (finding 1). |
 | Content-addressed evidence files in a blobs folder | A `travel_blobs` table in the same database | Works differently: files commit with the records that cite them, and travel with backups and change snapshots. |
 | `@ri/app-kit` data, sources, time and UI | Moved into Travel (`src/lib`, `src/ui`) | Works differently |
 | `plugin.json` requests: Gmail, Calendar and Ri actions | The application's `connectors`: purpose, `mail.read`, `calendar.read` and Ri's tool names. Ri's consent screen pre-ticks them. | Works differently |
@@ -287,9 +298,13 @@ Found in Ri and fixed in Travel: Ri refuses a whole server whose tool takes an i
 
 ## What the kit and Ri should change
 
-Ordered by impact. None was worked around in the kit or Ri. Each is handled inside Travel or listed above as blocked. Status as of kit `a8e9b5d`.
+Ordered by impact. None was worked around in the kit or Ri. Each is handled inside Travel or listed above as blocked. Status as of kit `023f92f`.
 
-1. **Transactions (kit), still open.** The kit's database API is async and D1-compatible, with atomic batches but no transaction that can read inside it. Travel's writes read, decide and write together: match a confirmation, then create, merge or send to Review, with history and the import checkpoint, all or nothing. Rewriting them as batches would change the logic, not just the plumbing. So Travel opens a second, synchronous better-sqlite3 connection to the kit's own `data.sqlite`, in the same process, using the same SQLite library copy as the kit (checked again on 0.2.2). The cost: Travel runs only as a Node service, and its Worker build is a stub that says so. The kit's build still always produces a Worker, with no way for an app to say it's Node-only. **Kit option:** a `transaction(ctx, work)` on Node that runs on the kit's own connection, or a supported way to get that connection, plus a way to declare an app Node-only.
+1. **Transactions (kit): closed on Node, open on Cloudflare.** Travel's writes read, decide and write together: match a confirmation, then create, merge or send to Review, with history and the import checkpoint, all or nothing. Rewriting them as D1 batches would change the logic, not just the plumbing.
+   - Until v0.1.1 Travel opened a second, synchronous better-sqlite3 connection to the kit's own `data.sqlite`.
+   - Since kit #15 the core has `transaction(ctx, work)` on Node, on its own connection, and Travel uses it (v0.1.2). Its second connection is gone, and app.config.ts declares `platforms: ["node"]`, so `deploy cloudflare` refuses Travel.
+   - Still open: Cloudflare, where the kit plans to move an installation's database into a Durable Object (`docs/transactions-on-workers.md` in the kit). The kit's build still produces a Worker, so Travel's stays a stub that says so.
+   - Still open in Travel, as the kit's note says: a sync step reads its checkpoint before the network call and writes it after, without checking again. Only the job's claim keeps two steps for one account apart. Behavior was kept as it was for this move.
 2. **App-only tools (kit, then Ri): closed.** Core 0.2.2 has `visibility: ["app"]`, and Ri's host enforces it. Travel uses it.
 3. **Messages, links and downloads from a view (kit, then Ri): closed in the kit.** Core 0.2.2 has `draftMessage`, `openLink`, `download`, `openInBrowser`, `setSection` and `selectMany`. Travel uses them all. Ri's host drafts, opens links and, since [dynamismlabs/ri#2](https://github.com/dynamismlabs/ri/pull/2), saves files.
 4. **Approvals (Ri): partly closed.** Ri's approvals now carry IDs, an approved call stays open 24 hours, and a declined call is refused; core 0.2.2 follows them. Whether Ri still asks before an app adds a task to the person's own Ri wasn't checked here (Ri wasn't run). Travel handles either.
@@ -309,7 +324,7 @@ Ordered by impact. None was worked around in the kit or Ri. Each is handled insi
 
 ## Tests
 
-| Old suite (92 tests) | New suite (119 tests) | Notes |
+| Old suite (92 tests) | New suite (125 tests) | Notes |
 | --- | --- | --- |
 | domain (19) | domain (19) | Unchanged |
 | parse (14) | parse (14) | Unchanged |
@@ -317,10 +332,11 @@ Ordered by impact. None was worked around in the kit or Ri. Each is handled insi
 | sync (17) | sync (21) | Accounts come from the fake hub's grant, with Ri's tool names. Account labels are the names Ri shows. Every granted account is automatic. Reconnect and removal go through `check_accounts`. Fair rotation runs through the `sync_sources` job. Added: not connected to Ri, and several accounts named by Ri's list or, on a Ri without it, by Ri's choice. For v0.1.1: a provider's 404 and 410, from Ri's code and status and from an older Ri's text (two tests). |
 | scope (15) | access (11) | Scopes became connections with chosen sources. "Revoked scope" and "no scope" moved to the kit's OAuth (`mcp.test.ts`) and an empty source list. "Job limited to its accounts" is now the hub's grant. "Access view" is now the consent screen's sources. The three replay tests became one retried-create test. The stored-reasons migration test is dropped (no old data). |
 | contract (5) | contract (7) | Checks the kit's contract and MCP tools instead of Ri's package format. Added: exactly which tools are view-only, and `open_travel`'s paths. |
-| view (2, Ri's packaged view in Chrome) | browser (8) | In the kit's strict host: the model's tool list and refused call, the @ menu and record reading, cards opening the app at a booking and at Review, `open_travel` at a booking, the place and selection reaching the assistant, a draft in the chat, directions and Open in browser through the host, Export saved through the host, a host link, and the same view in a host without drafts, links or files and in one that refuses links. Travel's own page at narrow and wide widths, and adding a pasted booking on an empty install. |
-| none | MCP with OAuth (5) | The real server, with the MCP SDK's OAuth client and sources chosen on consent. Added: no stack, path or internal message reaches a caller, over MCP or the browser's tRPC, when Travel's database fails. For v0.1.1: an account whose data was deleted leaves a connection's choice and stays out after a resume. |
+| view (2, Ri's packaged view in Chrome) | browser (9) | In the kit's strict host: the model's tool list and refused call, the @ menu and record reading, cards opening the app at a booking and at Review, `open_travel` at a booking, the place and selection reaching the assistant, a draft in the chat, directions and Open in browser through the host, Export saved through the host, a host link, and the same view in a host without drafts, links or files and in one that refuses links. Travel's own page at narrow and wide widths, and adding a pasted booking on an empty install. For v0.1.2: Settings inside the view. |
+| none | MCP with OAuth (5) | The real server, with the MCP SDK's OAuth client and sources chosen on consent. Added: no stack, path or internal message reaches a caller, over MCP or the browser's tRPC, when Travel's database fails (since v0.1.2, a SQLite trigger refuses its trip writes, since Travel has no connection of its own to make read-only). For v0.1.1: an account whose data was deleted leaves a connection's choice and stays out after a resume. |
 | none | kit fixture source (10) | Import through the kit's capabilities on the kit's runner, PDF through `ri__extract_text`, approval wait across the runner, a declined approval, Ri down and connection revoked. Added with kit #10: accounts from Ri's list, accounts from Ri's choice, an account Ri says must sign in again, and a deleted Ri task. For v0.1.1: the kit's client keeps the provider's status Ri sends. |
 | none | backups (2) | The kit's backup and restore keep the revision triggers and booking search, from a new backup and from one in the older format, and an edit after the restore moves the revision. |
+| none | transactions (5) | For v0.1.2, on the core's `transaction()`. An inner transaction joins the outer one and rolls back with it, a statement outside any transaction commits on its own, and work that awaits is refused. SQLite refuses the last write of a manual booking, an import, a Gmail page with its checkpoint, and deleting an account's data, and nothing earlier is kept, the view revision and search index included. Each then succeeds once the refusal is lifted. |
 
 ## Not checked here
 
