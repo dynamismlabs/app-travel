@@ -22,7 +22,7 @@ The complete command reference, with exit codes and the `--json` lines, is docs/
 
    On a Mac the service is a launchd agent (`local.<app id>`): it starts at login and restarts if it stops. On Linux it's a systemd user unit.
 
-   The service runs the Node that ran the install. With Homebrew's Node it records `/opt/homebrew/bin/node`, which stays across Homebrew's updates. With nvm (or another version manager without a lasting path) it records that version's own path, and the install's message says so: removing that version stops the app. To move the app to another Node, run `change` from that Node: it builds the app again for it, checks it, and rewrites the service definition, putting everything back if the new build doesn't answer. `change` and `upgrade` always bring the service definition up to date this way. After a major update of the same Node path, run `serve --uninstall` (data and builds are kept), then `serve --install`, because the build's native dependencies are built for one Node and the path alone doesn't show the update.
+   The service runs the Node that ran the install. With Homebrew's Node it records `/opt/homebrew/bin/node`, which stays across Homebrew's updates. With nvm (or another version manager without a lasting path) it records that version's own path, and the install's message says so: removing that version stops the app. `change` and `upgrade` build, check and rehearse with that same Node, whatever Node your shell has first on PATH, and the first step says which. To move the app to another Node, or after a major update of the same Node path, run `serve --uninstall` (data and builds are kept), then `serve --install` with that Node, because the build's native dependencies are built for one Node. A first install refuses a Node that doesn't satisfy the app's `engines.node`; switch to one that does (`nvm use`, for example) and run it again.
 3. The app prints, and Settings shows, its address, `http://127.0.0.1:<port>`. The MCP address is that plus `/mcp`.
 
 Each app has its own port, in `port` in app.config.ts. `create` picks a free one that no installed app uses (in 4310–4809; `pnpm dev` also uses the port 1000 above). `serve --install` refuses a port another app installed on this computer already answers on, and says which app: set `PORT` for the install, or change `port` in app.config.ts and commit it. Keep an installed app's port: Ri and other assistants connect to its address.
@@ -31,12 +31,12 @@ Data stays in `~/.local/share/<app id>` (or `APP_DATA_DIR`), outside the folder.
 
 ## Connect it to Ri, and to other assistants
 
-**Ri connects to the app like any MCP server.** Add the app's MCP address to a workspace. Each workspace is its own connection (its own OAuth client). The app's consent screen asks what that workspace may see, and whether it may also make changes.
+**Ri connects to the app like any MCP server.** Add the app's MCP address to a workspace. Each workspace is its own connection (its own OAuth client). The app's consent screen asks what that workspace may see, and whether it may also make changes. In an app with add actions (`adds: true`), it can also be limited to only adding.
 - In local-owner mode, the consent screen needs no sign-in.
 - The app also answers on `localhost` and `[::1]` at the same port.
-- Settings lists every connection with its access and can disconnect it.
+- Settings lists every connection with its access ("Can read and make changes", "Can read only", "Can only add") and can disconnect it.
 
-**Claude, ChatGPT and any other MCP client** connect the same way. A desktop host that can only start commands uses `pnpm exec app-builder mcp http://127.0.0.1:<port>/mcp`, which opens the consent screen once and keeps its token privately.
+**Claude, ChatGPT and any other MCP client** connect the same way. A desktop host that can only start commands uses `pnpm exec app-builder mcp http://127.0.0.1:<port>/mcp`, which opens the consent screen once and keeps its token privately. A browser extension or a web page connects the same way too, as a public client with PKCE (see [platform gotchas](platforms.md#clients-in-a-browser)).
 
 **The app connects back to Ri** to use the person's accounts, if it declares `connectors`. In Settings, under "Your accounts through Ri", enter Ri's integrations address (or preset `APP_HUB_URL`) and approve in Ri. The token is kept for the whole installation, so jobs can use it. See [jobs and connectors](jobs-and-connectors.md).
 
@@ -64,7 +64,7 @@ Data stays in `~/.local/share/<app id>` (or `APP_DATA_DIR`), outside the folder.
    | 1 | A check failed. Nothing changed, and the running app is untouched. Read the log path it prints, fix, commit, and run `change` again. |
    | 2 | The switch failed. The previous build and its data from before the change are back. If the result has `"answering":false`, that build was still starting when the command stopped waiting: check `status`, and never restore the snapshot yourself. |
    | 3 | The switch failed and so did putting the previous build and its data back. The message names the snapshot; tell the person. |
-   | 64 | Refused: not committed, an unknown ref, not installed yet, or another change running. |
+   | 64 | Refused: not committed, an unknown ref, not installed yet, another change running, or a Node that's gone or too old for `engines.node`. The message says what to do. |
 
 A rollback restores the app's own data, once. It can't undo anything that already reached outside, such as a sent email.
 

@@ -6,6 +6,34 @@ Node defaults to `~/.local/share/<app-id>`, overridden by APP_DATA_DIR. Rebuilds
 
 Use one SQLite dialect on native SQLite and D1. D1 batch is atomic; arbitrary interactive transactions are not available through this driver. Keep migration statements split with `-- statement-breakpoint`. Preserve applied SQL and append migrations: the ledger checks SHA-256 checksums. Test populated migrations on both drivers. D1 has statement and parameter limits; keep individual statements small and use bounded batches. Read the [current limits](https://developers.cloudflare.com/d1/platform/limits/) before large imports.
 
+### Transactions that read (Node only for now)
+
+`transaction(ctx, (tx) => …)` from `@app-builder/core` runs its work as one SQLite transaction on the installation's own connection: `BEGIN IMMEDIATE`, then `COMMIT`, or `ROLLBACK` if it throws.
+
+```ts
+import { transaction } from "@app-builder/core";
+
+const merged = transaction(ctx, (tx) => {
+  const keep = tx.db.select().from(people).where(eq(people.id, input.keep)).get();
+  if (!keep || keep.revision !== input.expectedRevision) throw new Error("Changed since you looked.");
+  tx.db.update(notes).set({ personId: keep.id }).where(eq(notes.personId, input.drop)).run();
+  tx.prepare("DELETE FROM people WHERE id = ?").run(input.drop);
+  return tx.db.select().from(notes).where(eq(notes.personId, keep.id)).all();
+});
+```
+
+- **The work is synchronous.** Use `tx.db`, which is Drizzle with `.all()`, `.get()` and `.run()` instead of `await`, or `tx.prepare(sql).get/all/run`. Make network, connector and AI calls before or after the transaction, never inside it.
+  - Work that returns a promise is refused, and its writes are rolled back.
+  - A `tx` used after its transaction ended (after an `await`, or kept for later) refuses to run.
+- **Reads see the transaction's own writes,** and nothing else runs on the connection until the transaction ends. Concurrent requests take turns. Another process waits for the write lock.
+- **A `transaction()` inside another joins it, with no savepoint.** Its writes commit or roll back with the outer one, even if the outer one catches its error. A function can call `transaction()` whether or not its caller already has one open.
+- **Never open your own better-sqlite3 connection** to the installation's `data.sqlite`. Its path, pragmas and locking belong to the core, and a second writer on the same file works against the first.
+- **Node only for now.** Cloudflare's D1 can't read inside a transaction. Declare `platforms: ["node"]` in app.config.ts.
+  - Without it, `transaction()` refuses on Node too, so the app's own tests catch it.
+  - With it, `deploy cloudflare` refuses the app.
+  - On a Worker, `transaction()` always throws.
+  - The plan for Workers is `docs/transactions-on-workers.md` in the builder repository.
+
 ## Workers
 
 Bindings and auth are created per request. Do not cache a request's bindings, viewer or database in module globals. The build emits one Worker and checks its gzip size against 3 MiB. Runtime secrets use Worker secrets, never VITE_ variables. All build targets scan output for configured secret values.
@@ -23,6 +51,29 @@ WWW-Authenticate: Bearer resource_metadata="https://your-app/.well-known/oauth-p
 
 The core owns discovery, dynamic registration, PKCE and consent. Every connection (one OAuth client registration: a Ri workspace, Claude, ChatGPT) gets the consent screen, which asks which of the app's sources it may see and whether it may also write. In local-owner mode it needs no sign-in. A connection's token works only on `/mcp`: the website (SSR, tRPC, photos, export) refuses it, so its limits apply everywhere it can reach. The core refuses writes for read-only connections; the app applies the source choice in every query, search, count and export. Declare `sources` on the application: `collectionSources` when your sources are sharing collections (requireRole and readableSpaceIds then apply the choice), or your own `list` plus `sourceFilter`/`requireSource` in each query. A revoked/expired token must fail on its next request while another valid connection still works. Refresh tokens rotate: each refresh retires the old one. For 30 seconds the old one returns the same new pair; replaying it after that revokes that connection's tokens, so its client connects again. Selected-record context is advisory app data; actions recheck the caller's access. Hosts without MCP Apps still get structured tool results.
 
+### Clients in a browser
+
+A browser extension or a web page can connect like any assistant. It registers itself, opens the consent screen as a top-level page (an extension uses `chrome.identity.launchWebAuthFlow`), exchanges the code and calls `/mcp`. Chrome sends the extension's origin (`chrome-extension://<id>`) and a page sends its own, so the core answers any origin on the routes clients use for themselves: the discovery documents, `/api/auth/mcp/register`, `/api/auth/mcp/token` and `/mcp`. They allow CORS with no credentials, and take no cookie. The client must be public: register with `token_endpoint_auth_method: "none"`, and send a PKCE S256 challenge and verifier. A browser client with a secret is refused. Every other route stays on the app's own origin, so never add CORS to an app route of your own, and never relax the origin check to let a client in. A client needs no route besides these.
+
+### Add-only connections
+
+A connection can be limited to adding, like a key that saves a link but can't list them. Mark each action that only adds with `adds: true`, with effect "write" and the "agent" audience. The consent screen then offers "Only add: <the actions' titles>". The core refuses that connection everything else: other actions, render tools, `open_<app>`, the @ menu and record reads. Its `ctx.connection` has `write: false` and `addOnly: true`; `canRead(ctx)` is false. Settings shows "Can only add". The source choice still applies, as where it may add.
+
+An add action's result must say nothing about records already there, or an add-only connection could read through it. Return what it was given, or counts:
+
+```ts
+defineAction({
+  name: "save_links", title: "Save links from a browser",
+  description: "Save up to 100 links. A link already saved merges into the same record. Says how many were saved.",
+  input: z.object({ items: z.array(z.object({ url: z.string().url(), title: z.string().max(500).optional() })).min(1).max(100) }),
+  output: z.object({ saved: z.number().int() }),
+  effect: "write", retry: "safe", audience: ["user", "agent"], adds: true,
+  handler: async (ctx, input) => ({ saved: await saveMany(ctx, input.items) }),
+});
+```
+
+An action that returns the stored record, like a `save_link` that answers with the merged bookmark's title, note and tags, isn't an add action as written. Leave it unmarked, or answer an add-only caller less (`canRead(ctx) ? record : { id }`, with an output schema that allows both). `existingOnRetry` refuses an add-only connection, since knowing an ID never grants a read. Test it with `createTestConnection(platform, { addOnly: true })`: the add action works, and every read and other write is refused.
+
 ### Assistant views
 
 The pattern matches Ri's own MCP server and what ChatGPT and Claude expect:
@@ -33,6 +84,15 @@ The pattern matches Ri's own MCP server and what ChatGPT and Claude expect:
 - Render tools carry `ui.resourceUri`, `openai/outputTemplate`, `openai/widgetAccessible` and `openai/toolInvocation/invoking|invoked`. Actions the screens call carry `openai/widgetAccessible`. Their results carry the app's address in `_meta["app/url"]`, which hosts give the view and keep from the model.
 - An action with `visibility: ["app"]` is view-only: its tool carries `_meta.ui.visibility: ["app"]` (and `openai/visibility: "private"`), so a host that follows MCP Apps keeps it out of the model's tool list and refuses the model's call, while the view can call it. It's the host's rule, not a check the app can make (the view and the model share one connection), so the app's own checks still apply: a view-only write still needs a connection that may write. Use it for the person's own decisions, such as deleting; mark nothing else. It needs the "agent" audience.
 - An app that declares `records` (`paths`, `search(ctx, query)`, `read(ctx, path)`) offers them to the host's @ menu: the core advertises `openai/mentions: { searchTool: "search_mentions" }`, adds that view-only, read-only tool (up to 20 `resource_link`s with `uri: "app://<app-id><path>"`), and answers `resources/read` on those URIs as the connection, as markdown of at most 32 KiB. Filter both by the caller, as in any read.
+- **Settings works inside the view.** An app with a view gets two view-only tools from the core, `read_settings` and `change_settings` (no app action may take those names). `ConnectionSettings` uses them when embedded, so the person can see and remove connections, connect or reconnect Ri, and run automations or set their time zone without leaving the assistant. `HubConnection` and `JobsPanel` do the same on their own. Show the Settings link in the view's header too (the starter does, next to Open in browser), and route `/settings` to `ConnectionSettings`.
+  - **The app checks the caller itself,** since a host that ignores visibility would hand these tools to its model.
+    - Only a connection that sees everything gets Settings. One limited to some sources is told to use the browser, because Settings would show what the other connections may see. So is an add-only one, which reads nothing.
+    - Changes need a connection that may also make changes.
+    - The hub and automations are the installation owner's, as in the browser.
+    - From the view, Ri can only be connected again to the hub the app already uses or was installed with (`APP_HUB_URL`), never pointed somewhere new.
+  - **Each connection is listed with its access,** as the web Settings lists it: read only, read and make changes, or only add.
+  - **Approving Ri** happens in the window the host opens (`ui/open-link`), and ends on the app's own address, where the browser must be the owner (local-owner mode, or signed in). The view checks every few seconds until it's connected.
+  - **Signing in, the account and downloading data stay in the browser.** The view offers Open in browser for them.
 - The resource `ui://<app-id>/main` (`text/html;profile=mcp-app`) declares an empty CSP (`connectDomains`, `resourceDomains`), `prefersBorder` and inline/full-screen display modes, both on the listing and on the read result.
 
 Inside the view:
@@ -52,7 +112,7 @@ Inside the view:
 
 The browser qualification (tests/mcp-apps.ts) runs the view in a host like that: a scripts-only sandbox, a page CSP that blocks all network, and full screen on request. Like Ri, it keeps view-only tools from its model, drafts `ui/message`, records links and downloads, and sends deep links; each can be turned off to check the view degrades.
 
-Use a standard MCP Client with StreamableHTTPClientTransport and a token to verify local tools. In tests, `createTestConnection(platform, { sources, write })` from `@app-builder/core/node` records a connection as if the person had approved it and returns its token (tests/app.test.ts does this). A desktop host that speaks HTTP connects to `<address>/mcp` with OAuth; one that only starts commands uses `app-builder mcp <address>/mcp`, which opens the consent screen once and keeps its token privately. ChatGPT and Claude live connection/rendering are separate qualification checks; a passing SDK test is not proof of either UI.
+Use a standard MCP Client with StreamableHTTPClientTransport and a token to verify local tools. In tests, `createTestConnection(platform, { sources, write, addOnly })` from `@app-builder/core/node` records a connection as if the person had approved it and returns its token (tests/app.test.ts does this). A desktop host that speaks HTTP connects to `<address>/mcp` with OAuth; one that only starts commands uses `app-builder mcp <address>/mcp`, which opens the consent screen once and keeps its token privately. ChatGPT and Claude live connection/rendering are separate qualification checks; a passing SDK test is not proof of either UI.
 
 ## Offline and sharing
 

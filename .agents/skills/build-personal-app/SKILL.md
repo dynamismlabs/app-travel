@@ -21,6 +21,8 @@ The starter uses React Router framework mode SSR with Vite. Screens live in src/
 
 Borrow only the reference behavior the workflow needs. Reading Log shows a private tracker and optimistic edit checks. Recipe Box shows collection roles, private photos, replay-safe offline capture and collections as connection sources. Installed reference source is under `node_modules/@app-builder/core/templates/starter` and `templates/recipe-box`; edit the app's own source. When the entire shared recipe workflow fits, create with `--example recipe-box`.
 
+When an action must read and then decide what to write, all or nothing (an import that checks what it already has, a merge, a review decided once), use `transaction(ctx, (tx) => …)` from the core. It runs synchronously on the installation's own SQLite connection, so never open a second connection to data.sqlite. It runs on Node only for now, so declare `platforms: ["node"]` in app.config.ts; [platform gotchas](references/platforms.md) has the rules.
+
 For new records, keep the client-generated UUID through all retries. `client.save` durably queues a create and its File objects before returning. Existing-record edits carry expectedUpdatedAt and report conflicts. Define authorizeFile against the parent record for both read and write. Sharing is an explicit product decision: enable sharingActions and enforce the app's chosen role policy in every action.
 
 ## 3. Views for assistants
@@ -34,6 +36,8 @@ The whole app works inside a host, not a smaller version. Give every record its 
 ## 4. What each connection may see
 
 Every assistant connection (a Ri workspace, Claude, ChatGPT) uses OAuth, even on the person's own Mac, and the app's consent screen asks what it may see and whether it may also write. The core refuses writes for read-only connections. If the app has separate parts a connection could be limited to (collections, accounts, bank accounts), declare `sources` on the application and apply the choice in every query, search, count and export: `collectionSources` when they are sharing collections (requireRole and readableSpaceIds then apply it), otherwise your own `list` plus `sourceFilter`/`requireSource` from `@app-builder/core` in each query. Apps without sources skip that question. A source you delete drops out of every connection's choice: `ctx.connection.sources` only ever names sources your `list` still returns, so don't check for deleted ones. The person's own browser sees everything they can.
+
+When something should add records without reading them, mark the actions that only add with `adds: true`. Examples are a browser extension or a phone Shortcut that saves a link. Each needs effect "write" and the "agent" audience. The consent screen then offers "Only add" beside read only and read and write. The core lets such a connection call those actions and nothing else: no reads, no other writes, no views. An add action's result must say nothing about records already there. Return the id it was given, or counts, never a stored record, even when the add merges into an existing one. [Platform gotchas](references/platforms.md#add-only-connections) has the example. A browser extension or a web page signs in with OAuth like any assistant (a public client with PKCE); the core answers its origin on the OAuth routes and `/mcp`.
 
 ## 5. Outside services and jobs
 
