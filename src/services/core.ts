@@ -125,7 +125,17 @@ export function setTravelClock(platform: Context["platform"], now: (() => Date) 
   if (now) clocks.set(platform.driver, now); else clocks.delete(platform.driver);
 }
 
+/**
+ * TRAVEL_NOW pins "today" for trip dates in a preview or a test, so the
+ * fictional November 2026 trips stay upcoming whatever the real date. Nobody
+ * sets it for real use.
+ */
+const pinned = () => {
+  const value = process.env.TRAVEL_NOW;
+  return value && !Number.isNaN(Date.parse(value)) ? () => new Date(value) : undefined;
+};
+
 /** The Travel instance for this request. */
 export async function travelFor(ctx: Pick<Context, "platform">): Promise<Travel> {
-  return createTravel(await travelDatabase(ctx.platform), { now: clocks.get(ctx.platform.driver) });
+  return createTravel(await travelDatabase(ctx.platform), { now: clocks.get(ctx.platform.driver) ?? pinned() });
 }

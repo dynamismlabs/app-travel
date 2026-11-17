@@ -4,10 +4,12 @@
  * operation ID, so a retry or a second click returns the same task.
  * Availability is checked with get_task.
  *
- * Ri's hub asks the person before an app creates a task. The first call
- * answers "waiting for approval"; Travel keeps the follow-up pending and its
- * declared job (follow_ups) repeats the identical call, which the kit's runner
- * retries every two minutes until the person approves in Ri.
+ * Ri's hub may ask the person before an app creates a task. Then the first
+ * call answers "waiting for approval" with an approval ID: Travel keeps the
+ * follow-up pending, and its declared job (follow_ups) repeats the identical
+ * call, which the kit's runner retries until the person decides. Ri keeps an
+ * approved call open for 24 hours. A declined one fails the follow-up and is
+ * never made again on its own.
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod/v3";
@@ -74,6 +76,7 @@ export function createFollowUps(t: Travel) {
       const kind = failureKind(error);
       const state: FollowUpRow["state"] = kind === "approval" || kind === "busy" ? "pending" : kind === "not_allowed" || kind === "reconnect" || kind === "choose_account" ? "needs_permission" : "failed";
       const message = kind === "approval" ? WAITING_APPROVAL
+        : kind === "denied" ? "You declined this task in Ri, so Travel won't ask again. Create the follow-up again if you change your mind."
         : kind === "busy" ? "Ri isn't answering right now. Travel will try again with the same task."
         : kind === "not_allowed" ? "Travel isn't allowed to add Ri tasks. Allow \"Add tasks\" for Travel in Ri, then try again."
         : kind === "reconnect" || kind === "choose_account" ? "Connect Travel to Ri in Settings, then try again. The same task will be used."

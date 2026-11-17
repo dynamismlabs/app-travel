@@ -54,11 +54,23 @@ describe("the kit's fixture source", () => {
     const start = Date.now();
     await (await runJobNow(application, h.platform, "follow_ups", { now: () => start })).done;
     expect(await status(h, "follow_ups", start)).toMatchObject({ status: "waiting", approval: { tool: "ri__create_task" } });
-    // Approved in Ri: the runner checks the grant again and repeats the identical call.
+    // Approved in Ri: the runner checks the grant again and repeats the identical call (every 5 minutes for the first hour).
     data.tools!.ri__create_task = { result: { id: "task-approved", title: "Book the airport transfer" } };
-    await runDueJobs(application, h.platform, { now: () => start + 3 * 60_000 });
-    expect(await status(h, "follow_ups", start + 3 * 60_000)).toMatchObject({ status: "succeeded" });
+    await runDueJobs(application, h.platform, { now: () => start + 6 * 60_000 });
+    expect(await status(h, "follow_ups", start + 6 * 60_000)).toMatchObject({ status: "succeeded" });
     expect((await h.call("list_follow_ups", { limit: 50 })).items[0]).toMatchObject({ state: "created", taskId: "task-approved" });
+  });
+
+  it("stops asking when the person declines the task in Ri", async () => {
+    const data = fixtures();
+    data.tools!.ri__create_task = { approval: "denied" } as never;
+    const h = await harness({ hub: fixtureSource(data) });
+    const trip = await h.call("save_trip", { title: "Lisbon", startDate: "2026-11-09", endDate: "2026-11-14" });
+    const declined = await h.call("create_follow_up", { subject: { type: "trip", id: trip.record.id }, title: "Book the airport transfer" });
+    expect(declined).toMatchObject({ status: "failed", followUp: { state: "failed" }, message: "You declined this task in Ri, so Travel won't ask again. Create the follow-up again if you change your mind." });
+    // The job doesn't repeat a declined call.
+    await (await runJobNow(application, h.platform, "follow_ups")).done;
+    expect(await status(h, "follow_ups")).toMatchObject({ status: "succeeded", result: { created: 0, waiting: 0 } });
   });
 
   it("retries when Ri is down, keeping where each account was, and fails the run when the connection was revoked", async () => {

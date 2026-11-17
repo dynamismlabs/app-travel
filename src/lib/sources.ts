@@ -16,7 +16,7 @@
  * and keeps the readers here. They came from Ri's old app kit.
  */
 import { z } from "zod/v3";
-import { ApprovalPending, SetupRequired, SourceUnavailable, connectors, type Context } from "@app-builder/core";
+import { ApprovalDenied, ApprovalPending, SetupRequired, SourceUnavailable, connectors, type Context } from "@app-builder/core";
 import { AppError, nowIso, type SqlDatabase, transaction } from "./data.js";
 import { fromCapabilityMessage, parseGmailMessage, parseMetadata, type MailHeaders, type MailMessage } from "./mail.js";
 
@@ -77,8 +77,9 @@ export function hubFor(ctx: Context, signal: AbortSignal = new AbortController()
  * only as text, `provider error 404 for GET ...`, so Travel reads the status
  * from the message.
  */
-export function failureKind(error: unknown): "not_found" | "reconnect" | "not_allowed" | "busy" | "approval" | "choose_account" | "interrupted" | "other" {
+export function failureKind(error: unknown): "not_found" | "reconnect" | "not_allowed" | "busy" | "approval" | "denied" | "choose_account" | "interrupted" | "other" {
   if (error instanceof ApprovalPending) return "approval";
+  if (error instanceof ApprovalDenied) return "denied";
   if (error instanceof AppError) {
     if (error.code === "not_found") return "not_found";
     if (error.code === "interrupted") return "interrupted";
