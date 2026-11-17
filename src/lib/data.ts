@@ -203,7 +203,10 @@ export function createJobQueue(db: SqlDatabase, options: { now?: () => Date } = 
       return transaction(db, () => {
         const job = get(id);
         if (!job || job.state !== "pending") throw new AppError("conflict", "This background step is no longer pending");
-        const time = stamp();
+        // Later than any step before it, so two steps in the same millisecond (or under a fixed
+        // clock) don't tie, which would hand the next turn to the same unit by its ID every time.
+        const latest = db.prepare("SELECT MAX(last_run_at) AS at FROM app_jobs").get()?.at;
+        const time = typeof latest === "string" && latest >= stamp() ? new Date(Date.parse(latest) + 1).toISOString() : stamp();
         db.prepare("UPDATE app_jobs SET state = 'running', attempts = attempts + 1, last_run_at = ?, updated_at = ? WHERE id = ?").run(time, time, id);
         settings.set("jobs.lastKind", job.kind);
         return get(id)!;
