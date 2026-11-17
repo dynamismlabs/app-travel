@@ -195,6 +195,41 @@ describe.skipIf(!chrome || !built)("Travel's view in the kit's strict MCP Apps h
     await expect.poll(async () => (await asked()).links.at(-1)).toBe(`${origin}/trips/${ids.lisbon}`);
   });
 
+  it("opens Settings inside the view: marks its own connection, removes another at once, and leaves the account to the browser", async () => {
+    await createTestConnection(running.platform, { name: "Another assistant", sources: null, write: false });
+    // The core's Settings tools are the view's own, never the model's.
+    const modelTools = await page.evaluate(() => window.mcpFixture.modelTools());
+    expect(modelTools).not.toContain("read_settings");
+    expect(modelTools).not.toContain("change_settings");
+    expect((await modelCall("read_settings")).isError).toBe(true);
+    await mount("open_travel");
+    await expect.poll(displayMode).toBe("fullscreen");
+    await view().locator(".tr-hostbar").getByRole("link", { name: "Settings", exact: true }).click();
+    await view().getByRole("heading", { name: "Settings", exact: true }).waitFor();
+    const rows = view().locator(".connection-row");
+    await rows.filter({ hasText: "Strict host (this one)" }).waitFor();
+    expect(await rows.filter({ hasText: "Another assistant" }).count()).toBe(1);
+    await page.screenshot({ path: path.join(artifacts, "view-settings.png"), fullPage: true });
+    // Another connection goes at once. The view's own asks first.
+    await rows.filter({ hasText: "Another assistant" }).getByRole("button", { name: "Disconnect" }).click();
+    await view().getByText("Connection removed.").waitFor();
+    await expect.poll(() => rows.filter({ hasText: "Another assistant" }).count()).toBe(0);
+    await rows.filter({ hasText: "(this one)" }).getByRole("button", { name: "Disconnect" }).click();
+    await view().getByText("This view uses it, so the app stops working here.").waitFor();
+    await view().getByRole("button", { name: "Keep it" }).click();
+    expect(await rows.filter({ hasText: "(this one)" }).count()).toBe(1);
+    // The account and downloads are in the browser.
+    await view().getByRole("button", { name: "Open Settings in the browser" }).first().click();
+    await expect.poll(async () => (await asked()).links.at(-1)).toBe(`${origin}/settings`);
+    // Back to Travel within the frame (its start reopens the last trip), and Sources' Settings opens here too.
+    await view().getByRole("button", { name: "← Back to Travel" }).click();
+    await view().locator(".tr-hostbar").waitFor();
+    expect(await view().getByRole("heading", { name: "Settings", exact: true }).count()).toBe(0);
+    await mount("open_travel", { path: "/sources" });
+    await view().getByRole("button", { name: "Settings", exact: true }).click();
+    await view().getByRole("heading", { name: "Settings", exact: true }).waitFor();
+  });
+
   it("never reached the network from the view, and raised no errors", () => {
     expect(failures).toEqual([]);
   });

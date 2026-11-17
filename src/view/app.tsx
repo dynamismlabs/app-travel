@@ -11,7 +11,7 @@
  * reads records through Travel's tools under its own connection.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useLocation } from "react-router";
+import { Link, useLocation } from "react-router";
 import { OpenInBrowser, useAppClient } from "@app-builder/core/react";
 import { AppFrame, installStyles, LoadingState, Notice, SectionTabs, useRiApp } from "../ui/index.js";
 import { AddBookingDialog } from "./add.js";
@@ -114,8 +114,8 @@ export function TravelApp() {
   return (
     <NavContext.Provider value={nav}>
       <AppFrame>
-        {/* Inside an assistant: the way out to Travel's own page, at the place the person is. */}
-        {client.embedded && <div className="tr-hostbar"><OpenInBrowser className="ri-button ri-button--quiet ri-button--sm" /></div>}
+        {/* Inside an assistant: the way out to Travel's own page, at the place the person is, and Settings, which opens here. */}
+        {client.embedded && <div className="tr-hostbar"><OpenInBrowser className="ri-button ri-button--quiet ri-button--sm" /><Link to="/settings" className="ri-button ri-button--quiet ri-button--sm">Settings</Link></div>}
         {screen}
       </AppFrame>
       <AddBookingDialog

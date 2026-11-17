@@ -46,7 +46,7 @@ export interface RiApp<TData = unknown> {
   /** Put a question in the chat's message box, unsent. False when the host didn't take it. */
   ask(prompt: string): Promise<boolean>;
   openSources(): void;
-  /** Where the person manages each assistant's access: Travel's Settings, in the browser when inside an assistant. */
+  /** Where the person manages each assistant's access: Travel's Settings, which opens inside an assistant's view too. */
   manageAccess(): Promise<boolean>;
   setLocation(path: string, options?: { replace?: boolean; push?: boolean }): void;
   goBack(fallback: string): void;
@@ -166,8 +166,7 @@ export function TravelBridge({ opener, children }: TravelBridgeProps) {
     ask: (prompt) => client.draftMessage(prompt),
     openSources() { go("/sources"); },
     async manageAccess() {
-      if (client.embedded) return client.openInBrowser("/settings");
-      window.location.assign("/settings");
+      go("/settings");
       return true;
     },
     setLocation: go,

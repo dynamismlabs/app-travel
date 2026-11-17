@@ -7,7 +7,7 @@
  * each may see, is in Settings (the kit's connections list).
  */
 import { useEffect, useState } from "react";
-import { OpenInBrowser } from "@app-builder/core/react";
+import { Link } from "react-router";
 import { AppShell, Button, ButtonRow, Checkbox, ErrorState, InlineError, LoadingState, Notice, SectionPanel, SourcesScreen, TextInput, useAnnounce, useMutation, useQuery, useRiApp, type HistoryDays, type SourceAccount } from "../ui/index.js";
 import { MainTabs, useNav } from "./app.js";
 import type { Sources, StepResult } from "./types.js";
@@ -27,7 +27,7 @@ export function SourcesScreenView() {
   const [step, setStep] = useState<string | null>(null);
   const checkAccounts = async () => {
     const result = await check.run({});
-    setStep(!result.connected ? `${result.message ?? "Travel isn't connected to Ri."} Connect it in Travel's Settings${app.embedded ? ", in your browser" : ""}.`
+    setStep(!result.connected ? `${result.message ?? "Travel isn't connected to Ri."} Connect it in Travel's Settings.`
       : result.accounts.length ? null : "Ri hasn't allowed Travel to read any accounts yet. Allow Gmail or Calendar for Travel on its page in Ri.");
   };
   // Ask Ri which accounts Travel may read when Sources opens.
@@ -69,7 +69,7 @@ export function SourcesScreenView() {
               onChangeHistory={(id, days) => cleanly(() => setup.run({ sourceAccount: byId.get(id)!.account, kind: byId.get(id)!.kind, historyDays: days }))}
             />
             <Notice tone="info" title="Assistants using Travel">
-              Each assistant that connects to Travel, such as a Ri workspace, sees only what you chose for it when it connected. {app.embedded ? <>See or disconnect them in Travel's Settings, where you also connect Travel to Ri. <OpenInBrowser path="/settings" className="ri-button ri-button--quiet ri-button--sm">Open Settings in browser</OpenInBrowser></> : <>See or disconnect them in <a href="/settings">Settings</a>, where you also connect Travel to Ri.</>}
+              Each assistant that connects to Travel, such as a Ri workspace, sees only what you chose for it when it connected. See or disconnect them in <Link to="/settings">Settings</Link>, where you also connect Travel to Ri.
             </Notice>
             {list.accounts.filter((account) => account.kind === "calendar" && account.granted).map((account) => <CalendarChooser key={account.id} account={account.account} label={account.label} chosen={account.calendars} />)}
             <Settings settings={list.settings} />
