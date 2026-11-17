@@ -186,4 +186,35 @@ describe("MCP with OAuth", () => {
     expect(broken.status).toBe(400);
     expectNoLeaks(await broken.text());
   });
+
+  // Last, since it deletes the preview's account.
+  it("drops an account whose data the person deleted from every connection's choice, and doesn't give it back when resumed", async () => {
+    const run = async (name: string, input: unknown) => {
+      const response = await fetch(`${origin}/api/trpc/run`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ name, input }) });
+      expect(response.status).toBe(200);
+    };
+    /** The sources a connection may see, as the person's Connections list shows them. */
+    const chosen = async (name: string) => {
+      const rows = await (await fetch(`${origin}/api/connections`, { headers: { origin } })).json() as { name: string; sources: { id: string }[] | null }[];
+      return rows.find((row) => row.name === name)?.sources?.map((source) => source.id);
+    };
+    const bookings = async (client: Client) => result<{ items: { title: string }[] }>(await client.callTool({ name: "list_bookings", arguments: { limit: 50 } })).items;
+    const mailbox = await connect("Ri · Mailbox", { sources: ["account:fictional-mailbox", "manual"], write: false });
+    expect((await bookings(mailbox.client)).length).toBeGreaterThan(0);
+    expect(await chosen("Ri · Mailbox")).toEqual(["account:fictional-mailbox", "manual"]);
+
+    await run("delete_source_data", { source: "account:fictional-mailbox" });
+    // The account left Travel's sources, so the core dropped it from the connection's choice.
+    expect(await bookings(mailbox.client)).toEqual([]);
+    expect(await chosen("Ri · Mailbox")).toEqual(["manual"]);
+
+    // Resumed, it's a source again for a new connection, but not for the one that chose it before.
+    await run("pause_source", { sourceAccount: "fictional-mailbox", paused: false });
+    const later = await connect("Ri · Later", { sources: null, write: false });
+    expect(later.offered.sources?.items.map((item) => item.id)).toContain("account:fictional-mailbox");
+    await bookings(mailbox.client);
+    expect(await chosen("Ri · Mailbox")).toEqual(["manual"]);
+    await mailbox.client.close();
+    await later.client.close();
+  });
 });

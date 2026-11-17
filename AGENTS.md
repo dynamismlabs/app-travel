@@ -22,7 +22,7 @@ Travel's writes are synchronous SQLite transactions on its own better-sqlite3 co
 ## Access
 
 - The person's own browser and the app's jobs see everything (`kind: "owner"`).
-- An assistant connection sees the sources chosen on the consent screen: `account:<address>`, `manual` and `imports`. It may write only if allowed. A connection allowed all sources is treated as the owner.
+- An assistant connection sees the sources chosen on the consent screen: `account:<address>`, `manual` and `imports`. It may write only if allowed. A connection allowed all sources is treated as the owner. Deleting an account's imported data marks it `deleted` and leaves it out of `sources.list` until it's resumed, so the core drops it from every connection's choice for good.
 - Filter by access before assembling any list, search, count, snippet, export or context. Use `repo.bookings(scope, ...)`, `read.visibleTrip` and `reviewVisible`. Never return a record because it was named in input.
 - Name a trip shown beside anything else with `read.tripTitle` or `read.tripHeading`, never `trip.title`.
 - Review decisions, deletion, source management, settings and export call `requireOwner`.

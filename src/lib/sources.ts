@@ -499,7 +499,8 @@ export async function listCalendars(hub: Hub, account: string) {
 // ─── Source accounts and the message index ───────────────────────────────────
 
 export type SourceKind = "mail" | "calendar";
-export type SourceStatus = "not_started" | "importing" | "ready" | "paused" | "reconnect" | "error";
+/** `deleted`: the person deleted what the account imported. It stays paused and out of the sources a connection can choose until they resume it. */
+export type SourceStatus = "not_started" | "importing" | "ready" | "paused" | "reconnect" | "error" | "deleted";
 export interface SourceAccount {
   account: string;
   kind: SourceKind;
@@ -535,6 +536,8 @@ const accountRow = (row: Record<string, unknown>): SourceAccount => ({
  * records it describes, so a restart resumes from the last committed page.
  */
 export function createAccountStore(db: SqlDatabase) {
+  // A paused account keeps `deleted` until it's resumed.
+  const PAUSED = "CASE WHEN status = 'deleted' THEN 'deleted' ELSE 'paused' END";
   const get = (account: string, kind: SourceKind) => {
     const row = db.prepare("SELECT * FROM app_source_accounts WHERE account = ? AND kind = ?").get(account, kind);
     return row ? accountRow(row) : null;
@@ -557,14 +560,18 @@ export function createAccountStore(db: SqlDatabase) {
     },
     commit(account: string, kind: SourceKind, checkpoint: unknown, status: SourceStatus, label?: string | null) {
       const time = nowIso();
-      db.prepare("UPDATE app_source_accounts SET checkpoint = ?, status = CASE WHEN paused = 1 THEN 'paused' ELSE ? END, last_error = NULL, last_success_at = ?, label = COALESCE(?, label), updated_at = ? WHERE account = ? AND kind = ?")
+      db.prepare(`UPDATE app_source_accounts SET checkpoint = ?, status = CASE WHEN paused = 1 THEN ${PAUSED} ELSE ? END, last_error = NULL, last_success_at = ?, label = COALESCE(?, label), updated_at = ? WHERE account = ? AND kind = ?`)
         .run(JSON.stringify(checkpoint), status, time, label ?? null, time, account, kind);
     },
     failed(account: string, kind: SourceKind, status: "error" | "reconnect", reason: string) {
-      db.prepare("UPDATE app_source_accounts SET status = CASE WHEN paused = 1 THEN 'paused' ELSE ? END, last_error = ?, updated_at = ? WHERE account = ? AND kind = ?").run(status, reason.slice(0, 300), nowIso(), account, kind);
+      db.prepare(`UPDATE app_source_accounts SET status = CASE WHEN paused = 1 THEN ${PAUSED} ELSE ? END, last_error = ?, updated_at = ? WHERE account = ? AND kind = ?`).run(status, reason.slice(0, 300), nowIso(), account, kind);
     },
     pause(account: string, paused: boolean) {
-      db.prepare("UPDATE app_source_accounts SET paused = ?, status = CASE WHEN ? = 1 THEN 'paused' WHEN checkpoint IS NULL THEN 'not_started' ELSE 'ready' END, updated_at = ? WHERE account = ?").run(paused ? 1 : 0, paused ? 1 : 0, nowIso(), account);
+      db.prepare(`UPDATE app_source_accounts SET paused = ?, status = CASE WHEN ? = 1 THEN ${PAUSED} WHEN checkpoint IS NULL THEN 'not_started' ELSE 'ready' END, updated_at = ? WHERE account = ?`).run(paused ? 1 : 0, paused ? 1 : 0, nowIso(), account);
+    },
+    /** The person deleted what this paused account imported. */
+    deleted(account: string) {
+      db.prepare("UPDATE app_source_accounts SET status = 'deleted', updated_at = ? WHERE account = ? AND paused = 1").run(nowIso(), account);
     },
     remove(account: string) {
       db.prepare("DELETE FROM app_source_accounts WHERE account = ?").run(account);

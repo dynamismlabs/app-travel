@@ -507,7 +507,7 @@ const pauseSource = act({
 
 const deleteSourceData = act({
   name: "delete_source_data", title: "Delete imported data",
-  description: "Delete what Travel imported from one account (account:<id>), from all files (imports) or from one file (import:<id>): its bookings, sources, search entries and calendar events. Notes you wrote are kept. The account is paused so nothing re-imports.",
+  description: "Delete what Travel imported from one account (account:<id>), from all files (imports) or from one file (import:<id>): its bookings, sources, search entries and calendar events. Notes you wrote are kept. The account is paused so nothing re-imports, and connections that were limited to it lose it.",
   input: s.deleteSourceInput, output: s.deleteSourceOutput, effect: "delete", visibility: viewOnly,
   handler(ctx, input, t) {
     owner(t, ctx, "write");

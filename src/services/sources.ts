@@ -28,7 +28,7 @@ export function createSources(t: Travel) {
 
   function sourceStatus(stored: SourceAccount | null, granted: boolean, fictional: boolean): SourcesOutput["accounts"][number]["status"] {
     if (!stored) return "not_started";
-    if (stored.paused) return "paused";
+    if (stored.paused || stored.status === "deleted") return "paused";
     if (!granted && !fictional) return "reconnect";
     return stored.status;
   }
@@ -182,8 +182,9 @@ export function createSources(t: Travel) {
       const stored = (["mail", "calendar"] as const).map((kind) => accounts.get(account, kind)).filter((item): item is SourceAccount => !!item);
       accounts.remove(account);
       for (const item of stored) accounts.setup({ account, kind: item.kind, historyDays: item.historyDays, label: item.label, calendars: item.calendars });
-      // Paused so the next scheduled step does not import everything again.
-      if (accounts.get(account, "mail") || accounts.get(account, "calendar")) accounts.pause(account, true);
+      // Paused so the next scheduled step does not import everything again, and out of the
+      // sources a connection can choose, so the core drops it from every connection's choice.
+      if (accounts.get(account, "mail") || accounts.get(account, "calendar")) { accounts.pause(account, true); accounts.deleted(account); }
     }
     return { status: "deleted" as const, source, bookings, evidence: evidence.length, keptNotes };
   }
@@ -191,11 +192,14 @@ export function createSources(t: Travel) {
   /**
    * What a connection can be limited to on the consent screen: each account
    * Travel reads and the two collections. Fictional preview records have their
-   * own source.
+   * own source. An account whose imported data the person deleted is left out
+   * until they resume it, so the core drops it from every connection that
+   * chose it and never lets it back in, as deleting it in Ri did.
    */
   function shareable() {
     const items = new Map<string, { id: string; name: string; detail?: string }>();
     for (const stored of accounts.list()) {
+      if (stored.status === "deleted") continue;
       const key = accountSource(stored.account);
       const existing = items.get(key);
       const detail = stored.kind === "mail" ? "Bookings imported from this email" : "Calendar events";
