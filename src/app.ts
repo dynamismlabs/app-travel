@@ -488,10 +488,10 @@ const setupSource = act({
 const listCalendarsAction = act({
   name: "list_calendars", title: "List calendars",
   description: "List the calendars of a calendar account Travel reads, so the person can choose which to check for trip conflicts.",
-  input: z.object({ account: z.string().min(1).max(320) }).strict(), output: s.calendarsOutput, effect: "read", visibility: viewOnly,
+  input: z.object({ sourceAccount: z.string().min(1).max(320) }).strict(), output: s.calendarsOutput, effect: "read", visibility: viewOnly,
   async handler(ctx, input, t) {
     owner(t, ctx, "read");
-    return createSources(t).calendars(ctx, input.account);
+    return createSources(t).calendars(ctx, input.sourceAccount);
   },
 });
 
@@ -501,7 +501,7 @@ const pauseSource = act({
   input: s.pauseSourceInput, output: s.okOutput, effect: "write", visibility: viewOnly,
   handler(ctx, input, t) {
     owner(t, ctx, "write");
-    return t.mutate(() => createSources(t).pause(input.account, input.paused));
+    return t.mutate(() => createSources(t).pause(input.sourceAccount, input.paused));
   },
 });
 

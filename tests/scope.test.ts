@@ -119,7 +119,7 @@ describe("access per connection", () => {
     // A connection allowed everything may manage Travel, as the person can.
     expect((await h.call("list_sources", {}, all)).accounts.length).toBe(2);
     const readOnlyAll = chat("five", null, false);
-    await expect(h.call("pause_source", { account: "acct-a", paused: true }, readOnlyAll)).rejects.toThrow(/can read but not make changes/);
+    await expect(h.call("pause_source", { sourceAccount: "acct-a", paused: true }, readOnlyAll)).rejects.toThrow(/can read but not make changes/);
   });
 
   it("imports only the accounts Ri grants, and the job sees everything it imports", async () => {

@@ -91,7 +91,8 @@ export function createSources(t: Travel) {
     };
   }
 
-  function setup(input: z.infer<typeof setupSourceInput>) {
+  function setup({ sourceAccount, ...rest }: z.infer<typeof setupSourceInput>) {
+    const input = { ...rest, account: sourceAccount };
     if (!accounts.get(input.account, input.kind)) throw new AppError("forbidden", "Allow this account for Travel in Ri first, then check for accounts again");
     const existing = accounts.get(input.account, input.kind);
     const historyDays = input.historyDays ?? existing?.historyDays ?? DEFAULT_HISTORY_DAYS;

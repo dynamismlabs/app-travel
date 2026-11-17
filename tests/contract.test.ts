@@ -54,6 +54,14 @@ describe("contract", () => {
     expect(tool("list_trips")._meta?.["openai/outputTemplate"]).toBeUndefined();
   });
 
+  it("takes no input named account on any tool, which Ri reserves and refuses a server for", () => {
+    const declaring = tools.filter((tool) => {
+      const schema = (tool as { inputSchema?: { properties?: Record<string, unknown>; anyOf?: { properties?: Record<string, unknown> }[] } }).inputSchema;
+      return [schema, ...(schema?.anyOf ?? [])].some((part) => part?.properties && "account" in part.properties);
+    }).map((tool) => tool.name);
+    expect(declaring).toEqual([]);
+  });
+
   it("uses copy without long dashes or semicolons in descriptions", () => {
     for (const item of [...tools, ...contract.actions]) {
       expect(item.description).not.toMatch(/[—–]/);

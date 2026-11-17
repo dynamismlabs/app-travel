@@ -217,8 +217,8 @@ export const applyImportInput = z.object({
 export const getEvidenceInput = z.object({ id }).strict();
 export const exportTripInput = z.object({ id, format: z.enum(["json", "csv"]) }).strict();
 export const sourceRefInput = z.object({ account: z.string().min(1).max(128), kind: z.enum(["mail", "calendar"]) }).strict();
-export const setupSourceInput = z.object({ account: z.string().min(1).max(128), kind: z.enum(["mail", "calendar"]), historyDays: z.union([z.literal(30), z.literal(90), z.literal(365)]).optional(), calendars: z.array(z.string().min(1).max(1024)).max(20).optional(), label: z.string().max(200).optional() }).strict();
-export const pauseSourceInput = z.object({ account: z.string().min(1).max(128), paused: z.boolean() }).strict();
+export const setupSourceInput = z.object({ sourceAccount: z.string().min(1).max(128), kind: z.enum(["mail", "calendar"]), historyDays: z.union([z.literal(30), z.literal(90), z.literal(365)]).optional(), calendars: z.array(z.string().min(1).max(1024)).max(20).optional(), label: z.string().max(200).optional() }).strict();
+export const pauseSourceInput = z.object({ sourceAccount: z.string().min(1).max(128), paused: z.boolean() }).strict();
 export const deleteSourceInput = z.object({ source: z.string().min(1).max(200) }).strict();
 /** `source` is an account source key such as `account:<connection>`. */
 export const continueImportInput = z.object({ source: z.string().regex(/^account:.{1,128}$/), kind: z.enum(["mail", "calendar"]).default("mail") }).strict();

@@ -58,15 +58,15 @@ export function SourcesScreenView() {
               note={<div className="ri-stack ri-stack--tight"><p>{list.note}</p><details><summary>What Travel searches for in Gmail</summary><p className="ri-small ri-muted" style={{ marginTop: "0.5rem", overflowWrap: "anywhere" }}>{list.mailQuery}</p></details></div>}
               onConnect={() => cleanly(checkAccounts)}
               onManageAccess={() => app.manageAccess()}
-              onPause={(id) => cleanly(() => pause.run({ account: byId.get(id)!.account, paused: true }))}
-              onResume={(id) => cleanly(() => (byId.get(id)?.paused ? pause.run({ account: byId.get(id)!.account, paused: false }) : app.openSources()))}
+              onPause={(id) => cleanly(() => pause.run({ sourceAccount: byId.get(id)!.account, paused: true }))}
+              onResume={(id) => cleanly(() => (byId.get(id)?.paused ? pause.run({ sourceAccount: byId.get(id)!.account, paused: false }) : app.openSources()))}
               onContinue={(id) => cleanly(async () => {
                 const account = byId.get(id)!;
                 const result = await proceed.run({ source: `account:${account.account}`, kind: account.kind });
                 setStep(result.step.summary);
               })}
               onDeleteImported={(id) => cleanly(() => remove.run({ source: id.startsWith("import:") ? id : `account:${byId.get(id)?.account ?? id}` }))}
-              onChangeHistory={(id, days) => cleanly(() => setup.run({ account: byId.get(id)!.account, kind: byId.get(id)!.kind, historyDays: days }))}
+              onChangeHistory={(id, days) => cleanly(() => setup.run({ sourceAccount: byId.get(id)!.account, kind: byId.get(id)!.kind, historyDays: days }))}
             />
             <Notice tone="info" title="Assistants using Travel">
               Each assistant that connects to Travel, such as a Ri workspace, sees only what you chose for it when it connected. {app.embedded ? <>See or disconnect them in Travel's Settings, where you also connect Travel to Ri. <OpenInBrowser path="/settings" className="ri-button ri-button--quiet ri-button--sm">Open Settings in browser</OpenInBrowser></> : <>See or disconnect them in <a href="/settings">Settings</a>, where you also connect Travel to Ri.</>}
@@ -81,7 +81,7 @@ export function SourcesScreenView() {
 }
 
 function CalendarChooser({ account, label, chosen }: { account: string; label: string; chosen: string[] }) {
-  const calendars = useQuery<{ calendars: { id: string; summary: string; primary: boolean }[]; chosen: string[] }>("list_calendars", { account });
+  const calendars = useQuery<{ calendars: { id: string; summary: string; primary: boolean }[]; chosen: string[] }>("list_calendars", { sourceAccount: account });
   const setup = useMutation<Record<string, unknown>, unknown>("setup_source");
   const announce = useAnnounce();
   const [selected, setSelected] = useState(chosen);
@@ -96,7 +96,7 @@ function CalendarChooser({ account, label, chosen }: { account: string; label: s
             <Checkbox key={calendar.id} label={`${calendar.summary}${calendar.primary ? " (main calendar)" : ""}`} checked={selected.includes(calendar.id) || (calendar.primary && selected.includes("primary"))}
               onChange={(on) => setSelected((list) => (on ? [...list.filter((id) => id !== calendar.id), calendar.id] : list.filter((id) => id !== calendar.id && !(calendar.primary && id === "primary"))))} />
           ))}
-          <ButtonRow><Button busy={setup.pending} onClick={async () => { try { await setup.run({ account, kind: "calendar", calendars: selected.slice(0, 20) }); announce("Calendars saved"); } catch { /* shown below */ } }}>Save calendars</Button></ButtonRow>
+          <ButtonRow><Button busy={setup.pending} onClick={async () => { try { await setup.run({ sourceAccount: account, kind: "calendar", calendars: selected.slice(0, 20) }); announce("Calendars saved"); } catch { /* shown below */ } }}>Save calendars</Button></ButtonRow>
           <InlineError>{cleanError(setup.error)}</InlineError>
         </>
       )}

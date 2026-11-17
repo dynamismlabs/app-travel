@@ -191,14 +191,14 @@ describe("Gmail import", () => {
     expect(starts.length).toBeGreaterThanOrEqual(4);
     for (let index = 1; index < 4; index++) expect(starts[index]).not.toBe(starts[index - 1]);
     expect((await h.call("list_bookings", { limit: 50, status: "all", kind: "all" })).items.length).toBeGreaterThanOrEqual(2);
-    await h.call("pause_source", { account: "acct-a", paused: true });
+    await h.call("pause_source", { sourceAccount: "acct-a", paused: true });
     capability.calls.length = 0;
     for (let run = 0; run < 3; run++) await h.call("sync_sources", {}, job());
     expect(capability.calls.filter((call) => call.account).every((call) => call.account === "acct-b")).toBe(true);
     const listed = await h.call("list_sources", {}, owner());
     expect(listed.accounts.find((item: { account: string }) => item.account === "acct-a")).toMatchObject({ status: "paused", paused: true, automatic: true });
     expect((await h.call("list_bookings", { limit: 50, status: "all", kind: "all" })).items.length).toBeGreaterThan(0);
-    await h.call("pause_source", { account: "acct-a", paused: false });
+    await h.call("pause_source", { sourceAccount: "acct-a", paused: false });
     for (let run = 0; run < 3; run++) await h.call("sync_sources", {}, job());
     expect((await h.call("list_bookings", { limit: 50, status: "all", kind: "all" })).items).toHaveLength(4);
   });
@@ -208,7 +208,7 @@ describe("Gmail import", () => {
     const capability = fakeHub({ gmail: { "acct-a": a } });
     const h = await harness({ hub: capability });
     await run(h, "acct-a", 4);
-    await h.call("setup_source", { account: "acct-a", kind: "mail", historyDays: 365 });
+    await h.call("setup_source", { sourceAccount: "acct-a", kind: "mail", historyDays: 365 });
     await run(h, "acct-a", 2);
     const searches = capability.calls.filter((call) => call.name === "gmail__search_messages");
     expect(searches).toHaveLength(2);
@@ -277,9 +277,9 @@ describe("calendar conflicts", () => {
     const trip = (await h.call("list_trips", { limit: 50, when: "all" }, caller)).items[0];
     // Ri granted the calendar, so Travel set it up with the primary calendar and hasn't read it yet.
     expect((await h.call("get_trip", { id: trip.id }, caller)).calendar.status).toBe("partial");
-    const listed = await h.call("list_calendars", { account: "acct-a" }, caller);
+    const listed = await h.call("list_calendars", { sourceAccount: "acct-a" }, caller);
     expect(listed.calendars.map((item: { id: string }) => item.id)).toEqual(["acct-a", "work"]);
-    await h.call("setup_source", { account: "acct-a", kind: "calendar", calendars: ["acct-a"] }, caller);
+    await h.call("setup_source", { sourceAccount: "acct-a", kind: "calendar", calendars: ["acct-a"] }, caller);
     await h.call("save_trip", { id: trip.id, expectedRevision: trip.revision, homeZone: "America/Denver" }, caller);
     await h.call("continue_import", { source: "account:acct-a", kind: "calendar" }, caller);
     const detail = await h.call("get_trip", { id: trip.id }, caller);
@@ -325,7 +325,7 @@ describe("lifecycle", () => {
   it("A paused or disconnected app remains readable to its owner, and removing one instance's data does not affect another", async () => {
     const h = await harness({ hub: fakeHub({ gmail: { "acct-a": gmailAccount([mail(fx.LISBON_FLIGHT)]) } }) });
     await run(h, "acct-a", 4);
-    await h.call("pause_source", { account: "acct-a", paused: true });
+    await h.call("pause_source", { sourceAccount: "acct-a", paused: true });
     expect((await h.call("list_trips", { limit: 50, when: "all" }, owner())).items).toHaveLength(1);
     // A second, separate installation (another data directory) is unaffected by removing this one.
     const other = await harness();
