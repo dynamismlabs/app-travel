@@ -179,6 +179,19 @@ describe("Gmail import", () => {
     expect((await h.call("save_trip", { title: "Kyoto" })).status).toBe("saved");
   });
 
+  it("finds several accounts from Ri's list, and from Ri's choice when Ri can't list them", async () => {
+    const accounts = () => ({ "acct-a": gmailAccount([mail(fx.LISBON_FLIGHT)]), "acct-b": gmailAccount([mail(fx.PORTLAND_TRAIN)]) });
+    const listing = fakeHub({ gmail: accounts() });
+    const listed = await harness({ hub: listing });
+    expect((await listed.call("check_accounts", {})).accounts.map((account: { id: string }) => account.id).sort()).toEqual(["mail:acct-a", "mail:acct-b"]);
+    // Named by Ri's list: no mailbox was asked.
+    expect(listing.calls.map((call) => call.name)).toEqual(["ri__list_accounts"]);
+    const older = fakeHub({ gmail: accounts(), listAccounts: false });
+    const chosen = await harness({ hub: older });
+    expect((await chosen.call("check_accounts", {})).accounts.map((account: { id: string }) => account.id).sort()).toEqual(["mail:acct-a", "mail:acct-b"]);
+    expect(older.calls.map((call) => call.name)).toEqual(["gmail__get_profile"]);
+  });
+
   it("pauses an account so the job skips it, rotates fairly between accounts, and resumes", async () => {
     const a = gmailAccount([mail(fx.LISBON_FLIGHT), mail(fx.LISBON_HOTEL)], 1);
     const b = gmailAccount([mail(fx.PORTLAND_TRAIN), mail(fx.PORTLAND_HOTEL)], 1);

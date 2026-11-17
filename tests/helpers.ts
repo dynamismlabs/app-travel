@@ -5,11 +5,14 @@
  * fictional.
  *
  * The fake hub is a ConnectorSource (the kit's interface for where connector
- * calls go), answering with Ri's hub tool names and shapes and failing the way
- * the kit's hub client does: SetupRequired for a disconnected hub, a tool Ri
- * didn't allow or several accounts to choose from, SourceUnavailable when Ri
- * is busy, ApprovalPending for a write waiting in Ri, and Ri's own text for a
- * provider's 404 or 410. tests/hub.test.ts also runs Travel on the kit's own
+ * calls go), answering with Ri's hub tool names and shapes, listing the
+ * accounts Ri lent (`ri__list_accounts`), and failing the way the kit's hub
+ * client does: SetupRequired for a disconnected hub or a tool Ri didn't
+ * allow, and with Ri's code for an account to sign in again or several
+ * accounts to choose from, SourceUnavailable when Ri is busy, ApprovalPending
+ * for a write waiting in Ri, and ConnectorError with Ri's code for a deleted
+ * task or a provider's 404 or 410 (still `provider_error` until
+ * dynamismlabs/ri#7). tests/hub.test.ts also runs Travel on the kit's own
  * fixture source.
  */
 import fs from "node:fs";
@@ -17,7 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { ApprovalPending, createActionRouter, SetupRequired, SourceUnavailable, type ConnectorSource, type Context, type Platform } from "@app-builder/core";
+import { ApprovalPending, ConnectorError, createActionRouter, SetupRequired, SourceUnavailable, type ConnectorSource, type Context, type Platform } from "@app-builder/core";
 import { openNodePlatform } from "@app-builder/core/node";
 import { application } from "../src/app.js";
 import { closeTravelDatabases } from "../src/db/connection.js";
@@ -148,6 +151,8 @@ export interface FakeHubOptions {
   approveTasks?: boolean;
   ai?: (prompt: string) => string | Error;
   extract?: (input: { fileName: string; mimeType: string; base64: string }) => { text: string; truncated: boolean; characters: number } | Error;
+  /** Answer `ri__list_accounts`, as Ri does since dynamismlabs/ri#4 (default). False: an older Ri, which asks Travel to choose. */
+  listAccounts?: boolean;
   /** The whole hub is down or the connection was revoked. */
   unavailable?: boolean;
   revoked?: boolean;
@@ -156,8 +161,9 @@ export interface FakeHub extends ConnectorSource {
   calls: { name: string; input: Record<string, unknown>; account?: string }[];
   options: FakeHubOptions;
 }
-const provider404 = (path: string) => new Error(`provider error 404 for GET ${path}`);
-const provider410 = (path: string) => new Error(`provider error 410 for GET ${path}`);
+// Ri's text for a provider's status, under its provider_error code (dynamismlabs/ri#7 makes these not_found).
+const provider404 = (tool: string, path: string) => new ConnectorError(`provider error 404 for GET ${path}`, "provider_error", tool);
+const provider410 = (tool: string, path: string) => new ConnectorError(`provider error 410 for GET ${path}`, "provider_error", tool);
 
 /** Ri's hub as the kit's connector client presents it to Travel. */
 export function fakeHub(options: FakeHubOptions = {}): FakeHub {
@@ -173,7 +179,7 @@ export function fakeHub(options: FakeHubOptions = {}): FakeHub {
     const names = Object.keys(accounts ?? {});
     if (!names.length) throw new Error(`MCP error -32602: Tool ${tool} not found`);
     if (!account) {
-      if (names.length > 1) throw new SetupRequired(`Choose which account to use (${names.join(", ")}). Multiple accounts are connected. Ask the user which one, then retry with the \`account\` field set to that exact value.`);
+      if (names.length > 1) throw new SetupRequired(`Choose which account to use (${names.join(", ")}). Multiple accounts are connected. Ask the user which one, then retry with the \`account\` field set to that exact value.`, { code: "choose_account", accounts: names });
       return [names[0], accounts![names[0]]];
     }
     if (!(account in accounts!)) throw new SetupRequired("Ri doesn't allow this app to do that. Check its access in Ri.");
@@ -187,16 +193,24 @@ export function fakeHub(options: FakeHubOptions = {}): FakeHub {
         ...(options.gmail && Object.keys(options.gmail).length ? ["gmail__get_profile", "gmail__list_history", "gmail__search_messages", "gmail__get_message", "gmail__read_message", ...(services.includes("attachments") ? ["gmail__get_attachment"] : [])] : []),
         ...(options.calendars && Object.keys(options.calendars).length ? ["google_calendar__list_calendars", "google_calendar__sync_events", "google_calendar__list_events"] : []),
         ...services.filter((name) => name !== "attachments").map((name) => `ri__${name}`),
+        ...(options.listAccounts === false ? [] : ["ri__list_accounts"]),
       ];
     },
     async callTool(name, raw) {
       check();
       const { account: requested, ...input } = raw as Record<string, unknown> & { account?: string };
       calls.push({ name, input, account: requested });
+      if (name === "ri__list_accounts" && options.listAccounts !== false) {
+        // One entry per account, its mail and calendar merged, named as the tools' account argument takes it.
+        const lent = new Map<string, string[]>();
+        for (const account of Object.keys(options.gmail ?? {})) lent.set(account, ["gmail__get_profile", "gmail__list_history", "gmail__search_messages", "gmail__get_message", "gmail__read_message", ...(services.includes("attachments") ? ["gmail__get_attachment"] : [])]);
+        for (const account of Object.keys(options.calendars ?? {})) lent.set(account, [...lent.get(account) ?? [], "google_calendar__list_calendars", "google_calendar__sync_events", "google_calendar__list_events"]);
+        return { accounts: [...lent].map(([account, tools], index) => ({ id: `acc_${String(index + 1).padStart(24, "0")}`, name: account, provider: "google", tools })) };
+      }
       if (name.startsWith("gmail__")) {
         const [account, box] = pick(options.gmail, requested, name);
-        // Ri answers an account that must sign in again with a status, not an error.
-        if (box.revoked) return { status: "authorization_required", provider: "gmail", message: "This needs a connected gmail account. The app is prompting the user to authorize, tell them to complete it, then retry." };
+        // Ri answers an account that must sign in again with a status, which the kit's client throws as SetupRequired.
+        if (box.revoked) throw new SetupRequired("Reconnect your Gmail account in Ri, then try again.", { code: "authorization_required", provider: "gmail" });
         if (name === "gmail__get_profile") return { emailAddress: account, historyId: String(box.historyId) };
         if (name === "gmail__search_messages") {
           const index = input.pageToken ? Number(String(input.pageToken).slice(1)) : 0;
@@ -204,26 +218,26 @@ export function fakeHub(options: FakeHubOptions = {}): FakeHub {
           return { messages: page.map((id) => ({ id, threadId: box.messages.get(id)?.threadId ?? `t-${id}` })), ...(index + 1 < box.pages.length ? { nextPageToken: `p${index + 1}` } : {}) };
         }
         if (name === "gmail__list_history") {
-          if (box.expireHistory) { box.expireHistory = false; throw provider404("/gmail/v1/users/me/history"); }
+          if (box.expireHistory) { box.expireHistory = false; throw provider404(name, "/gmail/v1/users/me/history"); }
           const records = box.history.shift() ?? [];
           return { historyId: String(++box.historyId), history: records };
         }
         if (name === "gmail__get_message") {
           const mail = box.messages.get(String(input.messageId));
-          if (!mail) throw provider404(`/gmail/v1/users/me/messages/${String(input.messageId)}`);
+          if (!mail) throw provider404(name, `/gmail/v1/users/me/messages/${String(input.messageId)}`);
           return { id: mail.id, threadId: mail.threadId ?? `t-${mail.id}`, labelIds: mail.labelIds ?? ["INBOX"], snippet: (mail.text ?? "").slice(0, 160), headers: { Subject: mail.subject, From: mail.from } };
         }
         if (name === "gmail__read_message") {
           if (box.failNextRead === input.messageId) { box.failNextRead = undefined; throw new SourceUnavailable("Ri had a problem (504). Trying again later."); }
           const mail = box.messages.get(String(input.messageId));
-          if (!mail) throw provider404(`/gmail/v1/users/me/messages/${String(input.messageId)}`);
+          if (!mail) throw provider404(name, `/gmail/v1/users/me/messages/${String(input.messageId)}`);
           return gmailMessage(mail);
         }
         if (name === "gmail__get_attachment") {
           if (!services.includes("attachments")) throw new Error(`MCP error -32602: Tool ${name} not found`);
           const mail = box.messages.get(String(input.messageId));
           const attachment = mail?.attachments?.find((item) => item.attachmentId === input.attachmentId);
-          if (!attachment) throw provider404("/gmail/v1/users/me/messages/attachments");
+          if (!attachment) throw provider404(name, "/gmail/v1/users/me/messages/attachments");
           return { data: Buffer.from(attachment.data, "utf8").toString("base64url"), size: attachment.data.length };
         }
       }
@@ -231,7 +245,7 @@ export function fakeHub(options: FakeHubOptions = {}): FakeHub {
         const [, box] = pick(options.calendars, requested, name);
         if (name === "google_calendar__list_calendars") return { calendars: box.calendars };
         if (name === "google_calendar__sync_events") {
-          if (input.syncToken && box.expireSync) { box.expireSync = false; throw provider410("/calendar/v3/calendars/primary/events"); }
+          if (input.syncToken && box.expireSync) { box.expireSync = false; throw provider410(name, "/calendar/v3/calendars/primary/events"); }
           if (input.syncToken) return { events: [], nextSyncToken: "sync-2" };
           return { events: box.events, nextSyncToken: "sync-1", calendarTimeZone: "America/Denver" };
         }
@@ -245,7 +259,7 @@ export function fakeHub(options: FakeHubOptions = {}): FakeHub {
       }
       if (name === "ri__get_task") {
         const found = [...tasks.values()].find((task) => task.id === input.id);
-        if (!found) throw new Error("That Ri record is no longer available");
+        if (!found) throw new ConnectorError("That Ri record is no longer available.", "not_found", name);
         return found;
       }
       if (name === "ri__ai_text") {

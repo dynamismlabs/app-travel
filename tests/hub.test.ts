@@ -73,6 +73,55 @@ describe("the kit's fixture source", () => {
     expect(await status(h, "follow_ups")).toMatchObject({ status: "succeeded", result: { created: 0, waiting: 0 } });
   });
 
+  it("names the accounts Ri lent from its account list, without asking an account", async () => {
+    const data = fixtures();
+    data.accounts = [
+      { id: "acc_000000000000000000000001", name: "alex.rivera@example.test", provider: "google", tools: ["gmail__get_profile", "gmail__search_messages", "gmail__get_message", "google_calendar__list_events"] },
+      { id: "acc_000000000000000000000002", name: "alex@work.example.test", provider: "google", tools: ["gmail__search_messages", "gmail__get_message"] },
+    ];
+    const source = fixtureSource(data);
+    const called: string[] = [];
+    const h = await harness({ hub: { ...source, callTool: (name, args, meta) => { called.push(name); return source.callTool(name, args, meta); } } });
+    const found = await h.call("check_accounts", {});
+    expect(found.accounts.map((account: { id: string }) => account.id).sort()).toEqual(["calendar:default", "mail:alex.rivera@example.test", "mail:alex@work.example.test"]);
+    // Two mail accounts: Ri's list names them. Nothing was read from either mailbox to find them.
+    expect(called).toEqual(["ri__list_accounts"]);
+  });
+
+  it("takes the accounts Ri names when a hub without the list asks Travel to choose", async () => {
+    const data = fixtures();
+    data.tools!.gmail__get_profile = { result: { status: "choose_account", accounts: ["alex.rivera@example.test", "alex@work.example.test"], message: "Multiple accounts are connected. Ask the user which one, then retry with the `account` field set to that exact value." } };
+    const h = await harness({ hub: fixtureSource(data) });
+    const found = await h.call("check_accounts", {});
+    expect(found.accounts.map((account: { id: string }) => account.id).filter((id: string) => id.startsWith("mail:")).sort()).toEqual(["mail:alex.rivera@example.test", "mail:alex@work.example.test"]);
+  });
+
+  it("asks the person to reconnect an account Ri says must sign in again, keeping its records", async () => {
+    // Ri sends authorization_required as a result, not an error; the core makes it a setup state.
+    const data: ConnectorFixtures = { tools: {
+      gmail__get_profile: { result: { emailAddress: "alex.rivera@example.test", historyId: "1" } },
+      gmail__search_messages: { result: { status: "authorization_required", provider: "gmail", message: "This needs a connected gmail account. The app is prompting the user to authorize, tell them to complete it, then retry." } },
+      gmail__get_message: { result: {} },
+    } };
+    const h = await harness({ hub: fixtureSource(data) });
+    await h.call("save_trip", { title: "Lisbon", startDate: "2026-11-09", endDate: "2026-11-14" });
+    const { step } = await h.call("continue_import", { source: "account:alex.rivera@example.test", kind: "mail" }, owner());
+    expect(step).toMatchObject({ summary: "Reconnect this account in Ri to continue updates. Records already imported are kept." });
+    expect((await h.call("list_sources", {}, owner())).accounts.find((account: { id: string }) => account.id === "mail:alex.rivera@example.test")).toMatchObject({ status: "reconnect" });
+    expect((await h.call("list_trips", { limit: 50, when: "all" })).items).toHaveLength(1);
+  });
+
+  it("marks a linked Ri task missing when Ri answers not_found", async () => {
+    const data = fixtures();
+    data.tools!.ri__create_task = { result: { id: "task-1", title: "Book the airport transfer" } };
+    data.tools!.ri__get_task = { error: { code: "not_found", message: "That task doesn't exist." } };
+    const h = await harness({ hub: fixtureSource(data) });
+    const trip = await h.call("save_trip", { title: "Lisbon", startDate: "2026-11-09", endDate: "2026-11-14" });
+    const created = await h.call("create_follow_up", { subject: { type: "trip", id: trip.record.id }, title: "Book the airport transfer" });
+    expect(created).toMatchObject({ status: "created", followUp: { taskId: "task-1" } });
+    expect((await h.call("check_follow_up", { id: created.followUp.id })).availability).toBe("missing");
+  });
+
   it("retries when Ri is down, keeping where each account was, and fails the run when the connection was revoked", async () => {
     const data = fixtures();
     const h = await harness({ hub: fixtureSource(data) });

@@ -29,7 +29,7 @@ Travel's writes are synchronous SQLite transactions on its own better-sqlite3 co
 
 ## The hub
 
-Travel reads Gmail, Calendar, PDFs (`ri__extract_text`), the model (`ri__ai_text`) and Ri tasks through the person's hub, by Ri's tool names (`HUB_TOOLS` in `src/lib/sources.ts`), with `hubFor(ctx)`. `failureKind` maps hub failures. When a hub offers only the kit's mail and calendar capabilities, Travel falls back to those adapters. Accounts come from what the hub grants (`createSources(t).discover`). Writes that reach Ri (tasks) wait for the person's approval: the follow-up stays pending, and the `follow_ups` job repeats the identical call.
+Travel reads Gmail, Calendar, PDFs (`ri__extract_text`), the model (`ri__ai_text`) and Ri tasks through the person's hub, by Ri's tool names (`HUB_TOOLS` in `src/lib/sources.ts`), with `hubFor(ctx)`. `failureKind` maps hub failures from the core's errors and Ri's `code` on them: `SetupRequired` (an account to reconnect or choose, with `accounts` for a choice), `SourceUnavailable`, `ConnectorError` (`not_found` for a deleted Ri task). Ri still sends a provider's 404 or 410 as `provider_error` with the status in its text, so `failureKind` reads "provider error 404" until dynamismlabs/ri#7 ships `not_found`. When a hub offers only the kit's mail and calendar capabilities, Travel falls back to those adapters. Accounts come from the accounts Ri lent (`hub.accounts()`, the core's `connectors(ctx).accounts()`) in `createSources(t).discover`: with several, Ri's names; with one, the mailbox's own address or the primary calendar's id, so stored accounts keep their keys. Writes that reach Ri (tasks) wait for the person's approval: the follow-up stays pending, and the `follow_ups` job repeats the identical call.
 
 ## Jobs
 

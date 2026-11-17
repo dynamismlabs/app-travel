@@ -10,7 +10,7 @@ import { z } from "zod/v3";
 import { AppError } from "../lib/data.js";
 import { accountSource, type AccessScope } from "../lib/data.js";
 import type { Context } from "@app-builder/core";
-import { accountsFromChoice, calendarCoverage, changeMailWindow, DEFAULT_ACCOUNT, failureKind, hubFor, HUB_TOOLS, listCalendars, mailCoverage, mailProfile, type Hub, type MailCheckpoint, type SourceAccount } from "../lib/sources.js";
+import { accountsFromChoice, calendarCoverage, changeMailWindow, DEFAULT_ACCOUNT, failureKind, hubFor, HUB_TOOLS, listCalendars, mailCoverage, mailProfile, type Hub, type LentAccount, type MailCheckpoint, type SourceAccount } from "../lib/sources.js";
 import { localDate } from "../lib/time.js";
 import { COLLECTION_LABELS, IMPORTS_SOURCE, MANUAL_SOURCE } from "../domain/model.js";
 import type { EvidenceRow } from "../db/repo.js";
@@ -207,16 +207,19 @@ export function createSources(t: Travel) {
   }
 
   /**
-   * Ask Ri which accounts Travel may read. Ri names no accounts when it
-   * granted one, so Travel reads the mailbox's own address, or the primary
-   * calendar's ID, which is the account's address. With several, Ri asks
-   * Travel to choose and names them. Accounts Ri no longer lists keep their
-   * records and show as needing access again.
+   * Ask Ri which accounts Travel may read, from the accounts it lent
+   * (`hub.accounts()`). With several for mail or calendar, Ri names each one
+   * as its tools' `account` argument takes it. With one, Travel reads the
+   * mailbox's own address, or the primary calendar's ID, which is the
+   * account's address, as it always has, so an account keeps its records
+   * whatever Ri calls it. A hub that can't list accounts asks Travel to choose
+   * and names them. Accounts Ri no longer lists keep their records and show as
+   * needing access again.
    */
   async function discover(hub: Hub): Promise<{ mail: string[]; calendar: string[]; connected: boolean; message: string | null }> {
     const found: { mail: string[]; calendar: string[] } = { mail: [], calendar: [] };
-    let tools: string[];
-    try { tools = await hub.tools(); }
+    let lent: LentAccount[];
+    try { lent = await hub.accounts(); }
     catch (error) {
       const kind = failureKind(error);
       if (kind === "reconnect" || kind === "not_allowed") return { ...found, connected: false, message: error instanceof Error ? error.message : "Connect Travel to Ri in Settings." };
@@ -225,8 +228,11 @@ export function createSources(t: Travel) {
     // An account that must sign in again in Ri can't name itself. Keep the ones Travel knows,
     // so their own steps report it and their records stay.
     const unsure = new Set<"mail" | "calendar">();
-    const names = async (kind: "mail" | "calendar", ask: () => Promise<string | null>) => {
-      try { const name = await ask(); if (name) found[kind].push(name); }
+    const names = async (kind: "mail" | "calendar", backs: (tools: string[]) => boolean, ask: (tools: string[]) => Promise<string | null>) => {
+      const backing = lent.filter((account) => backs(account.tools));
+      if (backing.length > 1) { found[kind].push(...backing.flatMap((account) => (account.name ? [account.name] : [])).slice(0, 20)); return; }
+      if (!backing.length) return;
+      try { const name = await ask(backing[0].tools); if (name) found[kind].push(name); }
       catch (error) {
         const failure = failureKind(error);
         if (failure === "choose_account") found[kind].push(...accountsFromChoice(error));
@@ -235,10 +241,10 @@ export function createSources(t: Travel) {
       }
     };
     // A hub with only the kit's mail or calendar capability names no account: Travel uses "default".
-    if (tools.includes(HUB_TOOLS.search) && tools.includes(HUB_TOOLS.metadata))
-      await names("mail", async () => tools.includes(HUB_TOOLS.profile) ? (await mailProfile(hub, null)).emailAddress : DEFAULT_ACCOUNT);
-    if (tools.includes(HUB_TOOLS.calendarSync) || tools.includes(HUB_TOOLS.calendarList))
-      await names("calendar", async () => tools.includes(HUB_TOOLS.calendars) ? (await listCalendars(hub, "")).find((calendar) => calendar.primary)?.id ?? DEFAULT_ACCOUNT : DEFAULT_ACCOUNT);
+    await names("mail", (tools) => tools.includes(HUB_TOOLS.search) && tools.includes(HUB_TOOLS.metadata),
+      async (tools) => tools.includes(HUB_TOOLS.profile) ? (await mailProfile(hub, null)).emailAddress : DEFAULT_ACCOUNT);
+    await names("calendar", (tools) => tools.includes(HUB_TOOLS.calendarSync) || tools.includes(HUB_TOOLS.calendarList),
+      async (tools) => tools.includes(HUB_TOOLS.calendars) ? (await listCalendars(hub, "")).find((calendar) => calendar.primary)?.id ?? DEFAULT_ACCOUNT : DEFAULT_ACCOUNT);
     t.mutate(() => {
       for (const kind of ["mail", "calendar"] as const) {
         for (const account of found[kind]) {

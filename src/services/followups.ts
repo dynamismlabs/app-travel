@@ -134,10 +134,10 @@ export function createFollowUps(t: Travel) {
       taskSchema.parse(await hub.call(HUB_TOOLS.getTask, { id: row.taskId }));
       availability = "available";
     } catch (error) {
-      // Ri answers a deleted task with not_found; the kit's client passes on only its message.
-      const message = error instanceof Error ? error.message : "";
-      if (/no longer available|not found/i.test(message)) availability = "missing";
-      else if (!["not_allowed", "reconnect", "choose_account", "busy"].includes(failureKind(error))) throw error;
+      // Ri answers a deleted task with not_found, which the core keeps as the error's code.
+      const failure = failureKind(error);
+      if (failure === "not_found") availability = "missing";
+      else if (!["not_allowed", "reconnect", "choose_account", "busy"].includes(failure)) throw error;
     } finally { await hub.close(); }
     transaction(t.db, () => repo.updateFollowUp(row.id, { availability, checkedAt: repo.iso() }));
     return read.followUpRecord(repo.followUp(row.id)!);

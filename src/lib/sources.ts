@@ -16,7 +16,7 @@
  * and keeps the readers here. They came from Ri's old app kit.
  */
 import { z } from "zod/v3";
-import { ApprovalDenied, ApprovalPending, SetupRequired, SourceUnavailable, connectors, type Context } from "@app-builder/core";
+import { ApprovalDenied, ApprovalPending, ConnectorError, SetupRequired, SourceUnavailable, connectors, type Context } from "@app-builder/core";
 import { AppError, nowIso, type SqlDatabase, transaction } from "./data.js";
 import { fromCapabilityMessage, parseGmailMessage, parseMetadata, type MailHeaders, type MailMessage } from "./mail.js";
 
@@ -40,10 +40,15 @@ export const HUB_TOOLS = {
   extractText: "ri__extract_text",
 } as const;
 
+/** An account Ri lent Travel: its name as a tool's `account` argument takes it, and the tools it backs. The core doesn't export this type. */
+export type LentAccount = Awaited<ReturnType<ReturnType<typeof connectors>["accounts"]>>[number];
+
 /** How Travel reaches the hub: one tool call, with the account when Ri granted several. */
 export interface Hub {
   call(tool: string, input: Record<string, unknown>, account?: string | null): Promise<unknown>;
   tools(): Promise<string[]>;
+  /** The accounts Ri lent Travel and the tools each backs (the core's `connectors(ctx).accounts()`). */
+  accounts(): Promise<LentAccount[]>;
   close(): Promise<void>;
   signal: AbortSignal;
 }
@@ -53,29 +58,26 @@ export const DEFAULT_ACCOUNT = "default";
 export function hubFor(ctx: Context, signal: AbortSignal = new AbortController().signal): Hub {
   const client = connectors(ctx);
   let listed: Promise<string[]> | undefined;
+  let lent: Promise<LentAccount[]> | undefined;
   return {
     signal,
     tools: () => (listed ??= client.tools()),
+    accounts: () => (lent ??= client.accounts()),
+    // The core turns Ri's answers that need the person (an account to reconnect or choose) into SetupRequired.
     async call(tool, input, account) {
       if (signal.aborted) throw new AppError("interrupted", "The step was cancelled");
-      const args = account && account !== DEFAULT_ACCOUNT ? { ...input, account } : input;
-      const result = await client.call(tool, args);
-      // Ri answers an account that needs signing in again as a result, not an error,
-      // and the kit's client passes it on. It's a setup state for that account.
-      const status = result && typeof result === "object" ? (result as { status?: unknown }).status : undefined;
-      if (status === "authorization_required" || status === "additional_permission_required" || status === "choose_connection_method")
-        throw new SetupRequired(`Reconnect this account in Ri. ${String((result as { message?: unknown }).message ?? "")}`.trim().slice(0, 300));
-      return result;
+      return client.call(tool, account && account !== DEFAULT_ACCOUNT ? { ...input, account } : input);
     },
     close: () => client.close(),
   };
 }
 
 /**
- * What a hub failure means for Travel. Ri reports a provider's 404 or 410
- * (a message deleted after it was listed, an expired history or sync token)
- * only as text, `provider error 404 for GET ...`, so Travel reads the status
- * from the message.
+ * What a hub failure means for Travel, from the core's errors and Ri's codes
+ * on them. Ri still reports a provider's 404 or 410 (a message deleted after
+ * it was listed, an expired history or sync token) as `provider_error` with
+ * the status only in its text, `provider error 404 for GET ...`, so Travel
+ * reads it from the message until dynamismlabs/ri#7 ships `not_found`.
  */
 export function failureKind(error: unknown): "not_found" | "reconnect" | "not_allowed" | "busy" | "approval" | "denied" | "choose_account" | "interrupted" | "other" {
   if (error instanceof ApprovalPending) return "approval";
@@ -89,19 +91,18 @@ export function failureKind(error: unknown): "not_found" | "reconnect" | "not_al
   }
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof SourceUnavailable) return "busy";
+  if (error instanceof ConnectorError && error.code === "not_found") return "not_found";
   if (error instanceof SetupRequired) {
-    if (/^Choose which account/i.test(message)) return "choose_account";
+    if (error.code === "choose_account") return "choose_account";
     if (/hasn't been allowed|isn't allowed|no longer allowed|doesn't allow/i.test(message)) return "not_allowed";
     return "reconnect";
   }
   if (/\bprovider error (404|410)\b/.test(message) || /\bstatus 410\b/.test(message)) return "not_found";
   return "other";
 }
-/** The accounts Ri named when it asked Travel to choose one ("Choose which account to use (a, b)."). */
+/** The accounts Ri named when it asked Travel to choose one. */
 export function accountsFromChoice(error: unknown): string[] {
-  const message = error instanceof Error ? error.message : "";
-  const list = /^Choose which account to use \(([^)]*)\)/i.exec(message)?.[1] ?? "";
-  return list.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 20);
+  return error instanceof SetupRequired ? (error.accounts ?? []).filter(Boolean).slice(0, 20) : [];
 }
 
 // ─── Gmail sync ──────────────────────────────────────────────────────────────
