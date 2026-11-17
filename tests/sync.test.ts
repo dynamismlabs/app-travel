@@ -310,6 +310,48 @@ describe("calendar conflicts", () => {
   });
 });
 
+describe.each([
+  ["Ri's code and the provider's status", false],
+  ["an older Ri's text", true],
+])("a provider's 404 or 410, from %s", (_shape, statusInText) => {
+  it("drops a message deleted after it was listed, rescans an expired Gmail history, restarts Calendar on 410 and keeps its place on 404", async () => {
+    const a = gmailAccount([mail(fx.LISBON_FLIGHT), mail(fx.LISBON_HOTEL)]);
+    // Listed in the backfill page, then deleted before Travel read it: Gmail answers 404.
+    a.messages.delete(fx.LISBON_HOTEL.id);
+    const calendars = { "acct-a": { calendars: [{ id: "acct-a", summary: "Alex", primary: true }], events: [], expireSync: true, gone: false } };
+    const capability = fakeHub({ gmail: { "acct-a": a }, calendars, statusInText });
+    const h = await harness({ hub: capability });
+    const caller = owner();
+    await run(h, "acct-a", 4, caller);
+    const t = await h.travel();
+    expect(t.mailIndex.counts("acct-a")).toEqual({ kept: 1, skipped: 0, removed: 1 });
+
+    // Gmail answers an expired history ID with 404: the window is rescanned, not the item dropped.
+    const histories = () => capability.calls.filter((call) => call.name === "gmail__list_history").length;
+    const read = histories();
+    a.expireHistory = true;
+    await run(h, "acct-a", 1, caller);
+    expect(histories()).toBe(read + 1);
+    expect((t.accounts.get("acct-a", "mail")!.checkpoint as { rescans: number }).rescans).toBe(1);
+
+    // Calendar's 410 for an expired sync token restarts the window with a full read.
+    await h.call("setup_source", { sourceAccount: "acct-a", kind: "calendar", calendars: ["acct-a"] }, caller);
+    const calendar = () => h.call("continue_import", { source: "account:acct-a", kind: "calendar" }, caller).then((result) => result.step);
+    await calendar();
+    await calendar();
+    await calendar();
+    // A 404 means the calendar itself is gone: the step fails and keeps its sync token.
+    calendars["acct-a"].gone = true;
+    const failed = await calendar();
+    expect(failed.summary).toBe(statusInText ? "provider error 404 for GET /calendar/v3/calendars/primary/events" : "The provider couldn't find that.");
+    calendars["acct-a"].gone = false;
+    await calendar();
+    const syncs = capability.calls.filter((call) => call.name === "google_calendar__sync_events");
+    expect(syncs.map((call) => (call.input.syncToken ? "token" : "window"))).toEqual(["window", "token", "window", "token", "token"]);
+    expect((t.accounts.get("acct-a", "calendar")!.checkpoint as Record<string, { resets: number; phase: string }>)["acct-a"]).toMatchObject({ resets: 1, phase: "incremental" });
+  });
+});
+
 describe("lifecycle", () => {
   it("Delete imported data removes one account's records, keeps written notes and other sources, and pauses that account", async () => {
     const a = gmailAccount([mail(fx.LISBON_FLIGHT), mail(fx.LISBON_HOTEL)]);

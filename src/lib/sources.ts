@@ -71,10 +71,9 @@ export function hubFor(ctx: Context, signal: AbortSignal = new AbortController()
 
 /**
  * What a hub failure means for Travel, from the core's errors and Ri's codes
- * on them. Ri still reports a provider's 404 or 410 (a message deleted after
- * it was listed, an expired history or sync token) as `provider_error` with
- * the status only in its text, `provider error 404 for GET ...`, so Travel
- * reads it from the message until dynamismlabs/ri#7 ships `not_found`.
+ * on them. A provider's 404 or 410 is `not_found`, like a Ri record that no
+ * longer exists. Where the two statuses mean different things, read
+ * `providerStatus`.
  */
 export function failureKind(error: unknown): "not_found" | "reconnect" | "not_allowed" | "busy" | "approval" | "denied" | "choose_account" | "interrupted" | "other" {
   if (error instanceof ApprovalPending) return "approval";
@@ -94,8 +93,21 @@ export function failureKind(error: unknown): "not_found" | "reconnect" | "not_al
     if (/hasn't been allowed|isn't allowed|no longer allowed|doesn't allow/i.test(message)) return "not_allowed";
     return "reconnect";
   }
-  if (/\bprovider error (404|410)\b/.test(message) || /\bstatus 410\b/.test(message)) return "not_found";
+  if (providerStatus(error)) return "not_found";
   return "other";
+}
+/**
+ * A Gmail or Calendar 404 or 410 that Ri passed on, or null for any other
+ * failure. Since dynamismlabs/ri#7, Ri sends it as `not_found` with the
+ * provider's `httpStatus`, whatever its message says: 404 for an item that no
+ * longer exists, 410 for one that's gone, such as an expired sync token. A
+ * hub from before that sends `provider_error` with the status only in its
+ * text, `provider error 404 for GET ...`, which is read as a fallback.
+ */
+export function providerStatus(error: unknown): 404 | 410 | null {
+  if (error instanceof ConnectorError && error.code === "not_found") return error.httpStatus === 404 || error.httpStatus === 410 ? error.httpStatus : null;
+  const text = error instanceof Error ? /\bprovider error (404|410)\b|\bstatus (410)\b/.exec(error.message) : null;
+  return text ? (Number(text[1] ?? text[2]) as 404 | 410) : null;
 }
 /** The accounts Ri named when it asked Travel to choose one. */
 export function accountsFromChoice(error: unknown): string[] {
@@ -209,7 +221,7 @@ export async function gmailSyncStep(options: MailSyncOptions): Promise<MailStepR
   const lane: "history" | "backfill" = checkpoint.backfill.complete ? "history" : checkpoint.lane === "history" ? "backfill" : "history";
   let bodies = 0, metadata = 0;
 
-  // A message can be deleted after it was listed. Its fetch then reports 404:
+  // A message can be deleted after it was listed. Its fetch then reports Gmail's 404:
   // record it as gone and keep going, so the page and its checkpoint still complete.
   const gone = (id: string, threadId: string) => { options.skip(id, threadId); options.removed(id); result.removed++; return true; };
   const read = async (tool: string, input: Record<string, unknown>) => {
@@ -252,8 +264,9 @@ export async function gmailSyncStep(options: MailSyncOptions): Promise<MailStepR
         ...(checkpoint.history.pageToken ? { pageToken: checkpoint.history.pageToken } : {}),
       }, historyResult);
     } catch (error) {
-      if (failureKind(error) === "not_found") {
-        // History expired: rescan the configured window from a fresh checkpoint.
+      if (providerStatus(error)) {
+        // History expired: rescan the configured window from a fresh checkpoint. Gmail
+        // answers an expired history ID with 404, not 410, its sign to sync in full.
         const fresh = newMailCheckpoint(checkpoint.windowDays, now());
         return { checkpoint: { ...fresh, emailAddress: checkpoint.emailAddress, rescans: checkpoint.rescans + 1, lastSuccessAt: checkpoint.lastSuccessAt }, more: true, lane, ...result };
       }
@@ -409,8 +422,9 @@ export interface CalendarStepResult { checkpoint: CalendarCheckpoint; more: bool
 /**
  * One bounded Calendar page. The full scan covers the window, then the sync
  * token returns only changes. A cancelled event is reported, not dropped. An
- * expired token (410) restarts the window. When half the future window has
- * passed, a fresh full scan moves it forward.
+ * expired token (Calendar's 410) restarts the window. A 404 means the
+ * calendar itself is gone, so the step fails and keeps its checkpoint. When
+ * half the future window has passed, a fresh full scan moves it forward.
  */
 export async function calendarSyncStep(options: {
   hub: Hub;
@@ -432,7 +446,7 @@ export async function calendarSyncStep(options: {
   try {
     page = syncPage.parse(await options.hub.call(HUB_TOOLS.calendarSync, input, options.account));
   } catch (error) {
-    if (failureKind(error) === "not_found" && checkpoint.phase === "incremental") {
+    if (providerStatus(error) === 410 && checkpoint.phase === "incremental") {
       const fresh = newCalendarCheckpoint(checkpoint.calendarId, checkpoint.pastDays, checkpoint.futureDays, now());
       return { checkpoint: { ...fresh, resets: checkpoint.resets + 1, lastSuccessAt: checkpoint.lastSuccessAt, timeZone: checkpoint.timeZone }, more: true, events: 0, cancelled: 0 };
     }

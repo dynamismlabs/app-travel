@@ -11,9 +11,10 @@
  * allow, and with Ri's code for an account to sign in again or several
  * accounts to choose from, SourceUnavailable when Ri is busy, ApprovalPending
  * for a write waiting in Ri, and ConnectorError with Ri's code for a deleted
- * task or a provider's 404 or 410 (still `provider_error` until
- * dynamismlabs/ri#7). tests/hub.test.ts also runs Travel on the kit's own
- * fixture source.
+ * task or a provider's 404 or 410 (`not_found` with the provider's status
+ * since dynamismlabs/ri#7, or `provider_error` with the status only in its
+ * text, as an older Ri sends it). tests/hub.test.ts also runs Travel on the
+ * kit's own fixture source.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -143,7 +144,8 @@ export function gmailAccount(mails: FakeMail[], pageSize = 50): GmailAccount {
 export interface FakeHubOptions {
   /** Gmail accounts by the name Ri shows for them (their address). */
   gmail?: Record<string, GmailAccount>;
-  calendars?: Record<string, { calendars: { id: string; summary: string; primary?: boolean }[]; events: Record<string, unknown>[]; expireSync?: boolean }>;
+  /** `expireSync` answers the next sync token with 410, `gone` answers every read of the calendar's events with 404. */
+  calendars?: Record<string, { calendars: { id: string; summary: string; primary?: boolean }[]; events: Record<string, unknown>[]; expireSync?: boolean; gone?: boolean }>;
   tasks?: Map<string, { id: string; title: string }>;
   /** Ri services the person allowed Travel (default: tasks, files and the model). */
   services?: ("create_task" | "get_task" | "ai_text" | "extract_text" | "attachments")[];
@@ -153,6 +155,8 @@ export interface FakeHubOptions {
   extract?: (input: { fileName: string; mimeType: string; base64: string }) => { text: string; truncated: boolean; characters: number } | Error;
   /** Answer `ri__list_accounts`, as Ri does since dynamismlabs/ri#4 (default). False: an older Ri, which asks Travel to choose. */
   listAccounts?: boolean;
+  /** Answer a provider's 404 or 410 as Ri did before dynamismlabs/ri#7: `provider_error`, with the status only in its text. */
+  statusInText?: boolean;
   /** The whole hub is down or the connection was revoked. */
   unavailable?: boolean;
   revoked?: boolean;
@@ -161,13 +165,20 @@ export interface FakeHub extends ConnectorSource {
   calls: { name: string; input: Record<string, unknown>; account?: string }[];
   options: FakeHubOptions;
 }
-// Ri's text for a provider's status, under its provider_error code (dynamismlabs/ri#7 makes these not_found).
-const provider404 = (tool: string, path: string) => new ConnectorError(`provider error 404 for GET ${path}`, "provider_error", tool);
-const provider410 = (tool: string, path: string) => new ConnectorError(`provider error 410 for GET ${path}`, "provider_error", tool);
+/**
+ * A provider's 404 or 410 as the kit's client throws it: since
+ * dynamismlabs/ri#7, `not_found` with the provider's status, its message
+ * naming no status. An older Ri sent `provider_error` with the status only
+ * in its text.
+ */
+const providerError = (options: FakeHubOptions, status: 404 | 410) => (tool: string, path: string) => options.statusInText
+  ? new ConnectorError(`provider error ${status} for GET ${path}`, "provider_error", tool)
+  : new ConnectorError(status === 410 ? "That's no longer available at the provider." : "The provider couldn't find that.", "not_found", tool, status);
 
 /** Ri's hub as the kit's connector client presents it to Travel. */
 export function fakeHub(options: FakeHubOptions = {}): FakeHub {
   const calls: FakeHub["calls"] = [];
+  const provider404 = providerError(options, 404), provider410 = providerError(options, 410);
   const tasks = options.tasks ?? new Map();
   const services = options.services ?? ["create_task", "get_task", "ai_text", "extract_text", "attachments"];
   const check = () => {
@@ -245,6 +256,7 @@ export function fakeHub(options: FakeHubOptions = {}): FakeHub {
         const [, box] = pick(options.calendars, requested, name);
         if (name === "google_calendar__list_calendars") return { calendars: box.calendars };
         if (name === "google_calendar__sync_events") {
+          if (box.gone) throw provider404(name, "/calendar/v3/calendars/primary/events");
           if (input.syncToken && box.expireSync) { box.expireSync = false; throw provider410(name, "/calendar/v3/calendars/primary/events"); }
           if (input.syncToken) return { events: [], nextSyncToken: "sync-2" };
           return { events: box.events, nextSyncToken: "sync-1", calendarTimeZone: "America/Denver" };

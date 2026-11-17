@@ -8,8 +8,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { fixtureSource, jobStatus, runDueJobs, runJobNow, type ConnectorFixtures } from "@app-builder/core";
+import { fixtureSource, jobStatus, runDueJobs, runJobNow, type ConnectorFixtures, type Context } from "@app-builder/core";
 import { application } from "../src/app.js";
+import { failureKind, hubFor, providerStatus } from "../src/lib/sources.js";
 import { cleanup, harness, owner } from "./helpers.js";
 
 afterEach(cleanup);
@@ -109,6 +110,24 @@ describe("the kit's fixture source", () => {
     expect(step).toMatchObject({ summary: "Reconnect this account in Ri to continue updates. Records already imported are kept." });
     expect((await h.call("list_sources", {}, owner())).accounts.find((account: { id: string }) => account.id === "mail:alex.rivera@example.test")).toMatchObject({ status: "reconnect" });
     expect((await h.call("list_trips", { limit: 50, when: "all" })).items).toHaveLength(1);
+  });
+
+  it("reads a provider's 404 or 410 from the code and status Ri sends, as the kit's client passes them on", async () => {
+    const data = fixtures();
+    data.tools!.gmail__read_message = { error: { code: "not_found", message: "The provider couldn't find that.", httpStatus: 404 } };
+    data.tools!.google_calendar__sync_events = { error: { code: "not_found", message: "That's no longer available at the provider.", httpStatus: 410 } };
+    data.tools!.ri__get_task = { error: { code: "not_found", message: "That task doesn't exist." } };
+    const h = await harness({ hub: fixtureSource(data) });
+    const hub = hubFor({ platform: h.platform } as Context);
+    const failure = (tool: string) => hub.call(tool, {}).then(() => null, (error: unknown) => error);
+    try {
+      expect(providerStatus(await failure("gmail__read_message"))).toBe(404);
+      expect(providerStatus(await failure("google_calendar__sync_events"))).toBe(410);
+      // A Ri record that no longer exists has no provider status, and is still not_found.
+      const task = await failure("ri__get_task");
+      expect(providerStatus(task)).toBeNull();
+      expect(failureKind(task)).toBe("not_found");
+    } finally { await hub.close(); }
   });
 
   it("marks a linked Ri task missing when Ri answers not_found", async () => {
