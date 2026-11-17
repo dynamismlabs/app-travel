@@ -63,8 +63,8 @@ const NOT_CONNECTED: ConnectorSource = {
 
 const CODES: Record<string, AppError["code"]> = { NOT_FOUND: "not_found", FORBIDDEN: "forbidden", BAD_REQUEST: "invalid_input", CONFLICT: "conflict", SERVICE_UNAVAILABLE: "busy" };
 
-export async function harness(options: { now?: string; hub?: ConnectorSource | null } = {}): Promise<Harness> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "travel-test-"));
+export async function harness(options: { now?: string; hub?: ConnectorSource | null; /** An existing data directory, such as a restored backup. Removed afterwards. */ dataDir?: string } = {}): Promise<Harness> {
+  const dir = options.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "travel-test-"));
   const opened = await openNodePlatform(application, { dataDir: dir, localOwner: true, baseURL: "http://127.0.0.1:4334" });
   created.push({ dir, close: () => { closeTravelDatabases(path.join(dir, "data.sqlite")); opened.close(); } });
   let now = options.now ? new Date(options.now) : new Date("2026-10-15T12:00:00.000Z");

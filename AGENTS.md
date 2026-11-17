@@ -17,7 +17,7 @@ Travel is a personal app built with App Builder (core 0.2.2, starter 0.2.0, pinn
 
 ## Database
 
-Travel's writes are synchronous SQLite transactions on its own better-sqlite3 connection to the kit's `data.sqlite` (`src/db/connection.ts`), in the same process and with the same SQLite library copy as the kit. The kit's async database has no transactions that can read inside them. Wrap each write in `t.mutate(() => …)`. Never await inside a transaction. Migrations still go through the kit (`application.migrations`). Never open the data directory from another process.
+Travel's writes are synchronous SQLite transactions on its own better-sqlite3 connection to the kit's `data.sqlite` (`src/db/connection.ts`), in the same process and with the same SQLite library copy as the kit. The kit's async database has no transactions that can read inside them. Wrap each write in `t.mutate(() => …)`. Never await inside a transaction. Migrations still go through the kit (`application.migrations`). Never open the data directory from another process. The view revision is a counter moved by triggers, and booking search is an FTS5 index (`bookings_fts`). The kit's `backup` and `restore` keep both; `tests/backup.test.ts` checks it, including a backup in the older format.
 
 ## Access
 
