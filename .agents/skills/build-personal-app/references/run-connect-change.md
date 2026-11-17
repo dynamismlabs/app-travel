@@ -11,10 +11,10 @@ The complete command reference, with exit codes and the `--json` lines, is docs/
    pnpm exec app-builder serve --install
    ```
 
-   Optionally set `PORT`, `APP_HUB_URL` (Ri's integrations address) or `APP_URL` in the environment; they're recorded in the service's `<data dir>/config.env`.
+   Optionally set `PORT`, `APP_HUB_URL` (Ri's integrations address) or `APP_URL` in the environment; they're merged into the service's `<data dir>/config.env` when it switches. An existing `APP_SECRET` is never replaced, and a failed install leaves the file untouched.
 
    The command:
-   - copies the commit into `<data dir>/releases/<commit>`
+   - copies the commit into a new build, `<data dir>/releases/<commit>-<time>`
    - installs from the lockfile
    - runs typecheck, test and build with disposable data and fixture connectors
    - starts the build once on a copy of any existing data
@@ -64,9 +64,16 @@ Data stays in `~/.local/share/<app id>` (or `APP_DATA_DIR`), outside the folder.
 
 A rollback restores the app's own data. It can't undo anything that already reached outside, such as a sent email.
 
+## Check on it, and keep its core current
+
+- `pnpm exec app-builder status` says whether the service is running, which release and core it runs, its address and MCP address, the last change and the last error. Add `--json` for the exact shape (docs/safe-change.md).
+- `restart`, `start` and `stop` control the service; `logs --lines 200`, `logs --since 1h` and `logs --follow` show its log, and `logs --change` the last install, change or upgrade.
+- `pnpm exec app-builder upgrade` moves the app onto a newer kit core (security fixes arrive this way). Commit first. It prepares the upgrade on a branch in a separate copy and switches only when the app's checks pass, like any change.
+
 ## Recovery
 
 - **A crash** restarts the service on its own (launchd's KeepAlive, systemd's Restart).
+- **A change interrupted mid-switch** (sleep, power loss, a killed process) is settled by the next `status`, `start`, `restart` or `change`: the new build is kept if it answers, otherwise the previous build, data and settings come back.
 - **`backup <folder>`** makes a portable, sensitive backup of an installation.
 - **`restore <folder>`** restores into an empty data directory.
 - **Records kept without an account** (local-owner mode) come with a one-time handoff code when restored onto a target that requires sign-in. The signed-in person enters it in Settings to take them over.

@@ -83,7 +83,8 @@ Times are in the installation's time zone. On the Node service that's the comput
 | --- | --- | --- |
 | Ri is unreachable or failing | `SourceUnavailable` | Waits with growing delays, then retries. The checkpoint stays. |
 | Not connected, access revoked, tool not granted, or an account must be chosen | `SetupRequired` | Fails with a message saying what to do. The checkpoint stays, and Settings shows the hub as needing reconnection. |
-| A write that reaches outside needs approval in Ri | `ApprovalPending` | Waits, also across restarts. Every two minutes it re-checks that the tool is still granted, then retries the identical call; a week without approval fails. |
+| A write that reaches outside needs approval in Ri | `ApprovalPending` | Waits on Ri's approval ID, also across restarts. It re-checks that the tool is still granted, then retries the identical call: every 5 minutes for the first hour, then every 30. Once approved, Ri accepts that call within 24 hours. A week without an answer fails. |
+| The person declined that call in Ri | `ApprovalDenied` | Fails with the person's answer. The same call isn't made again until a new run, and Ri refuses it for 24 hours. |
 | Anything else | | Fails with the error's message. The checkpoint stays. |
 
 Throw `SourceUnavailable` or `SetupRequired` from your own code when a source you call yourself behaves that way.
@@ -107,7 +108,10 @@ With `APP_CONNECTORS=fixtures` (and optionally `APP_CONNECTOR_FIXTURES=<file>`),
 
 ## 5. Rules
 
+- Only the installation's owner can connect the hub, see or run jobs, or change the time zone, and jobs act as the owner. Shared members and other accounts don't see these Settings sections.
+
 - Read outside services only through `connectors(ctx)`. Never ask for Google or other upstream tokens, and never use Ri's credentials.
+- Pass the action's own `ctx` to `connectors(ctx)`, never one saved from another call. Ri's audit log names the chat behind a hub call only from the tool call's `ctx`, which carries Ri's invocation context back.
 - Ask once, for the app. The grant is per app and works the same from a button, a job or a chat.
 - Keep imported records app-owned with stable ids. Revoking the hub stops future calls, and the records stay.
 - Never return connector tokens or credential values in action outputs, loader data or MCP context.
