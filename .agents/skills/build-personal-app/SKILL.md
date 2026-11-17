@@ -45,7 +45,7 @@ Store any other backend credential only with putCredential/getCredential/deleteC
 
 ## 6. Verify
 
-Use the workflow in a browser and through an MCP client (tests get a token with `createTestConnection` from `@app-builder/core/node`). Restart the production server and read saved records again. Test permissions from a second user and a limited connection when applicable, including direct file and MCP access. For changes to existing apps, migrate a populated disposable fixture and compare old ids and photos. Run `pnpm typecheck`, `pnpm test` and `pnpm build`. [Platform gotchas](references/platforms.md) covers offline capture, Workers, migrations and remote access.
+Use the workflow in a browser and through an MCP client (tests get a token with `createTestConnection` from `@app-builder/core/node`). Restart the production server and read saved records again. Test permissions from a second user and a limited connection when applicable, including direct file and MCP access. For changes to existing apps, migrate a populated disposable fixture and compare old ids and photos. Run `pnpm typecheck`, `pnpm test` and `pnpm build`. `pnpm test` is also the gate for every install and change, run while the computer may be busy, so keep wall-clock assertions (p95 budgets, "finishes in under N s") out of it, in a separate `test:perf`; index checks with `EXPLAIN QUERY PLAN` belong in it. [Platform gotchas](references/platforms.md) covers offline capture, Workers, migrations and remote access.
 
 ## 7. Run it, connect it to Ri, and change it safely
 

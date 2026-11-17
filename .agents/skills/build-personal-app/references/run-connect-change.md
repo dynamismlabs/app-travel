@@ -22,7 +22,7 @@ The complete command reference, with exit codes and the `--json` lines, is docs/
 
    On a Mac the service is a launchd agent (`local.<app id>`): it starts at login and restarts if it stops. On Linux it's a systemd user unit.
 
-   The service runs the Node that ran the install. With Homebrew's Node it records `/opt/homebrew/bin/node`, which stays across Homebrew's updates. With nvm (or another version manager without a lasting path) it records that version's own path, and the install's message says so: removing that version stops the app. To move the app to another Node, run `serve --uninstall` (data and builds are kept), then `serve --install` from that Node. After a major Node update, do the same, because the build's native dependencies are built for one Node.
+   The service runs the Node that ran the install. With Homebrew's Node it records `/opt/homebrew/bin/node`, which stays across Homebrew's updates. With nvm (or another version manager without a lasting path) it records that version's own path, and the install's message says so: removing that version stops the app. To move the app to another Node, run `change` from that Node: it builds the app again for it, checks it, and rewrites the service definition, putting everything back if the new build doesn't answer. `change` and `upgrade` always bring the service definition up to date this way. After a major update of the same Node path, run `serve --uninstall` (data and builds are kept), then `serve --install`, because the build's native dependencies are built for one Node and the path alone doesn't show the update.
 3. The app prints, and Settings shows, its address, `http://127.0.0.1:<port>`. The MCP address is that plus `/mcp`.
 
 Each app has its own port, in `port` in app.config.ts. `create` picks a free one that no installed app uses (in 4310–4809; `pnpm dev` also uses the port 1000 above). `serve --install` refuses a port another app installed on this computer already answers on, and says which app: set `PORT` for the install, or change `port` in app.config.ts and commit it. Keep an installed app's port: Ri and other assistants connect to its address.
@@ -62,17 +62,21 @@ Data stays in `~/.local/share/<app id>` (or `APP_DATA_DIR`), outside the folder.
    | --- | --- |
    | 0 | Switched, or that commit was already running. |
    | 1 | A check failed. Nothing changed, and the running app is untouched. Read the log path it prints, fix, commit, and run `change` again. |
-   | 2 | The switch failed. The previous build and its data from before the change are running again. |
-   | 3 | The switch failed and so did the rollback. The message names the snapshot; tell the person. |
+   | 2 | The switch failed. The previous build and its data from before the change are back. If the result has `"answering":false`, that build was still starting when the command stopped waiting: check `status`, and never restore the snapshot yourself. |
+   | 3 | The switch failed and so did putting the previous build and its data back. The message names the snapshot; tell the person. |
    | 64 | Refused: not committed, an unknown ref, not installed yet, or another change running. |
 
-A rollback restores the app's own data. It can't undo anything that already reached outside, such as a sent email.
+A rollback restores the app's own data, once. It can't undo anything that already reached outside, such as a sent email.
+
+The switch waits for the new build about three times as long as it took to answer on the copy of the data, between 1 and 10 minutes. On a computer that's very busy, add `--health-timeout <seconds>` to wait longer.
+
+**Keep `pnpm test` free of timing.** `change`, `upgrade` and `serve --install` run it as their gate, often while the computer is busy with other work, so a test that asserts wall-clock time (a p95 budget, "finishes in under 2 s") fails a correct change. Put those in a separate `test:perf` script that you run yourself. Checks that don't depend on the clock, such as `EXPLAIN QUERY PLAN` showing that a query uses its index, belong in `pnpm test`.
 
 ## Check on it, and keep its core current
 
 - `pnpm exec app-builder status` says whether the service is running, which release and core it runs, its address and MCP address, the last change and the last error. Add `--json` for the exact shape (docs/safe-change.md).
 - `restart`, `start` and `stop` control the service; `logs --lines 200`, `logs --since 1h` and `logs --follow` show its log, and `logs --change` the last install, change or upgrade.
-- `pnpm exec app-builder upgrade` moves the app onto a newer kit core (security fixes arrive this way). Commit first. It prepares the upgrade on a branch in a separate copy and switches only when the app's checks pass, like any change.
+- `pnpm exec app-builder upgrade` moves the app onto a newer kit core (security fixes arrive this way). Commit first. It prepares the upgrade on a branch in a separate copy and switches only when the app's checks pass, like any change. The new core's own `change` makes the switch. An app on kit `df533b0` or earlier switches with its older core, so run `change` once after that upgrade.
 
 ## Recovery
 

@@ -106,7 +106,7 @@ catch (error) {
 
 Don't match "404" or "not found" in the message: it's the provider's wording. A Ri hub from before this change sends these as `code: "provider_error"`, so until it's updated, keep any older handling for that code.
 
-**Which accounts Ri lent.** `await connectors(ctx).accounts()` lists them: each with `name` (what a tool's `account` argument takes), the `tools` it backs, and, from a hub that lists its accounts, a stable `id` and `provider`. When Ri lends one account for a tool, its tools don't name it, so that account comes back with `name: null`; call without `account`. Pass `account` only with a name from this list. Key your own records by `id` when there is one: it stays the same across Gmail and Calendar and when the person renames the account, and changes only if the app is connected to a different Ri address.
+**Which accounts Ri lent.** `await connectors(ctx).accounts()` lists them as `ConnectorAccount` objects (the type is exported from `@app-builder/core`): each with `name` (what a tool's `account` argument takes), the `tools` it backs, and, from a hub that lists its accounts, a stable `id` and `provider`. When Ri lends one account for a tool, its tools don't name it, so that account comes back with `name: null`; call without `account`. Pass `account` only with a name from this list. Key your own records by `id` when there is one: it stays the same across Gmail and Calendar and when the person renames the account, and changes only if the app is connected to a different Ri address.
 
 ## 4. Fixtures for tests and change checks
 
