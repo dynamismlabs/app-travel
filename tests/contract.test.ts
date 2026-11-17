@@ -37,7 +37,8 @@ describe("contract", () => {
   it("marks the person's own decisions view-only, so hosts keep them from the model, and offers records for the @ menu", () => {
     const tool = (name: string) => tools.find((item) => item.name === name)!;
     const viewOnly = tools.filter((item) => (item._meta?.ui as { visibility?: string[] } | undefined)?.visibility?.join() === "app").map((item) => item.name).sort();
-    expect(viewOnly).toEqual(["apply_import", "check_accounts", "continue_import", "delete_booking", "delete_source_data", "export_trip", "list_calendars", "list_sources", "open_view", "pause_source", "preview_import", "remember_view", "review_change", "save_settings", "search_mentions", "setup_source"]);
+    // read_settings and change_settings are the core's, for Settings inside the view.
+    expect(viewOnly).toEqual(["apply_import", "change_settings", "check_accounts", "continue_import", "delete_booking", "delete_source_data", "export_trip", "list_calendars", "list_sources", "open_view", "pause_source", "preview_import", "read_settings", "remember_view", "review_change", "save_settings", "search_mentions", "setup_source"]);
     // What chats could do in Ri stays visible to the model.
     for (const name of ["list_trips", "get_trip", "save_trip", "save_booking", "save_idea", "dismiss_gap", "create_follow_up", "describe_view_context", "show_trip", "open_travel"])
       expect((tool(name)._meta?.ui as { visibility?: string[] } | undefined)?.visibility).toBeUndefined();
