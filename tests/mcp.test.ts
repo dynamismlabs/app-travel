@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
@@ -17,6 +17,7 @@ import { serveApp, type RunningApp } from "@app-builder/core/node";
 import { application } from "../src/app.js";
 import { closeTravelDatabases } from "../src/db/connection.js";
 import { seedPreview } from "../src/fixtures/preview.js";
+import { travelFor } from "../src/services/core.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 let running: RunningApp;
@@ -152,5 +153,37 @@ describe("MCP with OAuth", () => {
     expect(sources.isError).toBe(true);
     await full.client.close();
     await limited.client.close();
+  });
+
+  it("never shows a caller a stack, a file path or what failed inside Travel, and logs it on the server", async () => {
+    const leaks = [/stack/i, /\/Users\//, /\/private\//, /node_modules/, /\.ts:\d+/, /\bat [\w.<>]+ \(/, /SqliteError/, /readonly/i];
+    const expectNoLeaks = (text: string) => { for (const leak of leaks) expect(text).not.toMatch(leak); };
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = await travelFor({ platform: running.platform });
+    const { client } = await connect("Ri · Errors", { sources: null, write: true });
+    // A database failure inside Travel: its connection refuses writes for this test.
+    t.db.exec("PRAGMA query_only = ON");
+    try {
+      const failed = await client.callTool({ name: "save_trip", arguments: { newId: crypto.randomUUID(), title: "Kyoto" } }) as { isError?: boolean; content: { text: string }[] };
+      expect(failed.isError).toBe(true);
+      expect(failed.content[0].text).toBe("Action failed.");
+      const browser = await fetch(`${origin}/api/trpc/run`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ name: "save_trip", input: { newId: crypto.randomUUID(), title: "Kyoto" } }) });
+      const text = await browser.text();
+      expectNoLeaks(text);
+      expect(JSON.parse(text)).toMatchObject({ error: { message: "This request could not be completed." } });
+    } finally {
+      t.db.exec("PRAGMA query_only = OFF");
+      await client.close();
+    }
+    expect(logged.mock.calls.map((call) => JSON.stringify(call)).some((line) => /readonly/i.test(line))).toBe(true);
+    logged.mockRestore();
+    // Travel's own refusals still show, without a stack. Before core 0.2.2's fixes, tRPC sent one with every error.
+    const missing = await fetch(`${origin}/api/trpc/read?input=${encodeURIComponent(JSON.stringify({ name: "get_trip", input: { id: "no-such-trip" } }))}`);
+    const refusal = await missing.text();
+    expectNoLeaks(refusal);
+    expect(JSON.parse(refusal)).toMatchObject({ error: { message: "That trip is no longer available", data: { code: "NOT_FOUND" } } });
+    const broken = await fetch(`${origin}/api/trpc/run`, { method: "POST", headers: { "content-type": "application/json", origin }, body: "{" });
+    expect(broken.status).toBe(400);
+    expectNoLeaks(await broken.text());
   });
 });
