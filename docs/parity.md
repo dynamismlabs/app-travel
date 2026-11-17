@@ -3,7 +3,7 @@
 Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder. Ported November 12 on kit core 0.2.0; moved November 16 to core 0.2.2 (kit `main` at `1713f6a`), which added the full app in every host (shared spec §5). This lists every feature and behavior from the old README, AGENTS.md, plugin.json and tests, and whether it works here.
 
 - **Works**: same behavior on the new path.
-- **Works in hosts**: works inside an assistant too, verified in the kit's strict test host (a scripts-only sandbox, no network, and Ri's rules for visibility, drafts, links, files and host links). Ri was then checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac (not Trey's own Ri, which runs on another computer), on the web and, partly, in its desktop app, with dummy records only. These lines say what Ri did. ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
+- **Works in hosts**: works inside an assistant too, verified in the kit's strict test host (a scripts-only sandbox, no network, and Ri's rules for visibility, drafts, links, files and host links). Ri was then checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac (not a Ri Home in everyday use, which runs on another computer), on the web and, partly, in its desktop app, with dummy records only. These lines say what Ri did. ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
 - **Works differently**: the outcome is there, but reached another way. Says how.
 - **Blocked**: not possible on the new path today. Says why: a kit gap, or a host's own rule.
 
@@ -236,7 +236,7 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 
 ## Real hosts
 
-Checked on November 16, 2026. "Ri" is a **disposable Ri at f55cdf96** on this Mac, with dummy records, not Trey's own Ri. Travel ran as the installed service at `http://127.0.0.1:4313` (launchd `local.travel`, release aeec62b, data in `~/.local/share/travel`), installed with `PORT=4313 APP_HOST=127.0.0.1 APP_URL=http://127.0.0.1:4313 pnpm exec app-builder serve --install HEAD --json` (every step passed) and moved to aeec62b with `change`. Ri connected it through Travel's consent screen. Full-screen checks used **Add MCP server**, because Ri's Add app path opens no screen yet. Screenshots: `docs/parity/ri-*.png`.
+Checked on November 16, 2026. "Ri" is a **disposable Ri at f55cdf96** on this Mac, with dummy records, not a Ri Home in everyday use. Travel ran as the installed service at `http://127.0.0.1:4313` (launchd `local.travel`, release aeec62b, data in `~/.local/share/travel`), installed with `PORT=4313 APP_HOST=127.0.0.1 APP_URL=http://127.0.0.1:4313 pnpm exec app-builder serve --install HEAD --json` (every step passed) and moved to aeec62b with `change`. Ri connected it through Travel's consent screen. Full-screen checks used **Add MCP server**, because Ri's Add app path opens no screen yet. Screenshots: `docs/parity/ri-*.png`.
 
 | Check | Ri on the web | Ri's desktop app | ChatGPT | Claude |
 | --- | --- | --- | --- | --- |
@@ -296,5 +296,5 @@ Ordered by impact. None was worked around in the kit or Ri; each is handled insi
 ## Not checked here
 
 - Travel connected to Ri's real hub: its consent screen, a real Gmail account, real approvals. Ri wasn't run, as asked. The hub client was exercised with the kit's fixture source and a fake of Ri's hub built from Ri's code (branch `claude/single-path-ri-hub`).
-- ChatGPT and Claude drawing Travel's view, and Trey's own Ri. Ri was checked in a disposable Ri at f55cdf96 ([Real hosts](#real-hosts)). Ri's desktop app was checked for the other three apps, not for Travel.
+- ChatGPT and Claude drawing Travel's view, and a Ri Home in everyday use. Ri was checked in a disposable Ri at f55cdf96 ([Real hosts](#real-hosts)). Ri's desktop app was checked for the other three apps, not for Travel.
 - `serve --install` on core 0.2.2 and a real launchd service: done on November 16 (below).
