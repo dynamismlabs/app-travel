@@ -9,8 +9,8 @@
 import { z } from "zod/v3";
 import { AppError } from "../lib/data.js";
 import { accountSource, type AccessScope } from "../lib/data.js";
-import type { Context } from "@app-builder/core";
-import { accountsFromChoice, calendarCoverage, changeMailWindow, DEFAULT_ACCOUNT, failureKind, hubFor, HUB_TOOLS, listCalendars, mailCoverage, mailProfile, type Hub, type LentAccount, type MailCheckpoint, type SourceAccount } from "../lib/sources.js";
+import type { ConnectorAccount, Context } from "@app-builder/core";
+import { accountsFromChoice, calendarCoverage, changeMailWindow, DEFAULT_ACCOUNT, failureKind, hubFor, HUB_TOOLS, listCalendars, mailCoverage, mailProfile, type Hub, type MailCheckpoint, type SourceAccount } from "../lib/sources.js";
 import { localDate } from "../lib/time.js";
 import { COLLECTION_LABELS, IMPORTS_SOURCE, MANUAL_SOURCE } from "../domain/model.js";
 import type { EvidenceRow } from "../db/repo.js";
@@ -218,7 +218,7 @@ export function createSources(t: Travel) {
    */
   async function discover(hub: Hub): Promise<{ mail: string[]; calendar: string[]; connected: boolean; message: string | null }> {
     const found: { mail: string[]; calendar: string[] } = { mail: [], calendar: [] };
-    let lent: LentAccount[];
+    let lent: ConnectorAccount[];
     try { lent = await hub.accounts(); }
     catch (error) {
       const kind = failureKind(error);

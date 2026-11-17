@@ -16,7 +16,7 @@
  * and keeps the readers here. They came from Ri's old app kit.
  */
 import { z } from "zod/v3";
-import { ApprovalDenied, ApprovalPending, ConnectorError, SetupRequired, SourceUnavailable, connectors, type Context } from "@app-builder/core";
+import { ApprovalDenied, ApprovalPending, ConnectorError, SetupRequired, SourceUnavailable, connectors, type ConnectorAccount, type Context } from "@app-builder/core";
 import { AppError, nowIso, type SqlDatabase, transaction } from "./data.js";
 import { fromCapabilityMessage, parseGmailMessage, parseMetadata, type MailHeaders, type MailMessage } from "./mail.js";
 
@@ -40,15 +40,12 @@ export const HUB_TOOLS = {
   extractText: "ri__extract_text",
 } as const;
 
-/** An account Ri lent Travel: its name as a tool's `account` argument takes it, and the tools it backs. The core doesn't export this type. */
-export type LentAccount = Awaited<ReturnType<ReturnType<typeof connectors>["accounts"]>>[number];
-
 /** How Travel reaches the hub: one tool call, with the account when Ri granted several. */
 export interface Hub {
   call(tool: string, input: Record<string, unknown>, account?: string | null): Promise<unknown>;
   tools(): Promise<string[]>;
   /** The accounts Ri lent Travel and the tools each backs (the core's `connectors(ctx).accounts()`). */
-  accounts(): Promise<LentAccount[]>;
+  accounts(): Promise<ConnectorAccount[]>;
   close(): Promise<void>;
   signal: AbortSignal;
 }
@@ -58,7 +55,7 @@ export const DEFAULT_ACCOUNT = "default";
 export function hubFor(ctx: Context, signal: AbortSignal = new AbortController().signal): Hub {
   const client = connectors(ctx);
   let listed: Promise<string[]> | undefined;
-  let lent: Promise<LentAccount[]> | undefined;
+  let lent: Promise<ConnectorAccount[]> | undefined;
   return {
     signal,
     tools: () => (listed ??= client.tools()),
