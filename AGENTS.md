@@ -8,16 +8,23 @@ Travel is a personal app built with App Builder (core 0.2.2, starter 0.2.0, pinn
 - `src/app.ts`: every action, the `show_*` views, the sources a connection can be limited to, the hub `connectors` and the two jobs. Importing it opens nothing.
 - `src/actions/schemas.ts`: strict input and output schemas (zod/v3, as the kit expects). `src/actions/examples.ts`: fictional examples the contract test validates.
 - `src/domain/`: pure. Time (`clock.ts`), places and zones, effective bookings with corrections, itinerary, coverage and gaps, matching, and deterministic extraction (`parse/`).
-- `src/db/`: `migrations.ts` (kit migrations, append only), `repo.ts` (row access), `connection.ts` (Travel's synchronous connection, below).
+- `src/db/`: `migrations.ts` (kit migrations, append only), `repo.ts` (row access), `connection.ts` (the app's database through the core's `transaction()`, below).
 - `src/services/`: ingestion, sync, imports, writes, follow-ups, sources, the read model and the view opener. `core.ts` builds the Travel instance for a request and resolves the caller's access from the kit's context.
 - `src/lib/`: what Ri's old app kit used to provide. `time.ts`, `mail.ts` (MIME, HTML, invitations), `sources.ts` (Gmail and Calendar sync through the hub, accounts, the message index), `data.ts` (transactions, cursors, settings, the per-account work queue, retained files, redaction).
 - `src/ui/`: the UI components, with `app.tsx`, the bridge from the screens to the kit's client and React Router. `src/view/`: Travel's screens. `src/screens.tsx`: routes and the `show_*` cards.
 - `src/fixtures/`: fictional messages and the preview seed. `TRAVEL_NOW` pins today for the preview and tests. `fixtures/connectors.json`: what `APP_CONNECTORS=fixtures` serves.
-- `src/worker.ts` is a stub. Travel runs on Node only.
+- `src/worker.ts` is a stub. Travel runs on Node only (`platforms: ["node"]` in app.config.ts).
 
 ## Database
 
-Travel's writes are synchronous SQLite transactions on its own better-sqlite3 connection to the kit's `data.sqlite` (`src/db/connection.ts`), in the same process and with the same SQLite library copy as the kit. The kit's async database has no transactions that can read inside them. Wrap each write in `t.mutate(() => …)`. Never await inside a transaction. Migrations still go through the kit (`application.migrations`). Never open the data directory from another process. The view revision is a counter moved by triggers, and booking search is an FTS5 index (`bookings_fts`). The kit's `backup` and `restore` keep both; `tests/backup.test.ts` checks it, including a backup in the older format.
+Travel's writes are synchronous SQLite transactions through the core's `transaction(ctx, work)`, on the kit's own connection (`src/db/connection.ts`). That runs on Node only for now, so app.config.ts declares `platforms: ["node"]`.
+- An action's synchronous body is `handler` in `act` (src/app.ts), and runs as one transaction. So do the `show_*` views, the @ menu, the source list and export.
+- An action that waits on Ri is a `run` instead. It wraps each write in `t.mutate(() => …)` between the calls, never across one.
+- A transaction inside another joins it, and rolls back with it. Never await inside one: the core refuses work that returns a promise.
+- A statement outside any transaction runs as one of its own.
+- Never open your own connection to `data.sqlite`, and never open the data directory from another process. Migrations still go through the kit (`application.migrations`).
+
+The view revision is a counter moved by triggers, and booking search is an FTS5 index (`bookings_fts`). The kit's `backup` and `restore` keep both, and `tests/backup.test.ts` checks it, including a backup in the older format. `tests/transactions.test.ts` checks that a failure at the last write of each key write leaves nothing behind.
 
 ## Access
 

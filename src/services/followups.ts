@@ -14,7 +14,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod/v3";
 import { ApprovalPending, type Context } from "@app-builder/core";
-import { AppError, allows, allowsAll, redact, transaction, type AccessScope } from "../lib/data.js";
+import { AppError, allows, allowsAll, redact, type AccessScope } from "../lib/data.js";
 import { failureKind, hubFor, HUB_TOOLS } from "../lib/sources.js";
 import { formatDateRange } from "../lib/time.js";
 import type { createFollowUpInput } from "../actions/schemas.js";
@@ -70,7 +70,7 @@ export function createFollowUps(t: Travel) {
     try {
       if (!(await hub.tools()).includes(HUB_TOOLS.createTask)) throw new AppError("forbidden", "Adding Ri tasks isn't allowed");
       const task = taskSchema.parse(await hub.call(HUB_TOOLS.createTask, requestFor(row)));
-      transaction(t.db, () => repo.updateFollowUp(row.id, { taskId: task.id, state: "created", availability: "available", checkedAt: repo.iso(), lastError: null }));
+      t.db.transaction(() => repo.updateFollowUp(row.id, { taskId: task.id, state: "created", availability: "available", checkedAt: repo.iso(), lastError: null }));
       return { status: "created", message: "Created one Ri task linked to this record." };
     } catch (error) {
       const kind = failureKind(error);
@@ -81,7 +81,7 @@ export function createFollowUps(t: Travel) {
         : kind === "not_allowed" ? "Travel isn't allowed to add Ri tasks. Allow \"Add tasks\" for Travel in Ri, then try again."
         : kind === "reconnect" || kind === "choose_account" ? "Connect Travel to Ri in Settings, then try again. The same task will be used."
         : redact(error);
-      transaction(t.db, () => repo.updateFollowUp(row.id, { state, lastError: message }));
+      t.db.transaction(() => repo.updateFollowUp(row.id, { state, lastError: message }));
       if (error instanceof ApprovalPending && options.rethrowApproval) throw error;
       return { status: state === "needs_permission" ? "needs_permission" : state === "pending" ? "pending" : "failed", message };
     } finally { await hub.close(); }
@@ -139,7 +139,7 @@ export function createFollowUps(t: Travel) {
       if (failure === "not_found") availability = "missing";
       else if (!["not_allowed", "reconnect", "choose_account", "busy"].includes(failure)) throw error;
     } finally { await hub.close(); }
-    transaction(t.db, () => repo.updateFollowUp(row.id, { availability, checkedAt: repo.iso() }));
+    t.db.transaction(() => repo.updateFollowUp(row.id, { availability, checkedAt: repo.iso() }));
     return read.followUpRecord(repo.followUp(row.id)!);
   }
 

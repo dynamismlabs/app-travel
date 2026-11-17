@@ -65,12 +65,18 @@ interface Def<I extends z.AnyZodObject, O extends z.ZodTypeAny> {
    * The app's own checks still apply.
    */
   visibility?: ("model" | "app")[];
-  handler(ctx: Context, input: z.infer<I>, t: Travel): Promise<z.input<O>> | z.input<O>;
+  /** The action's synchronous body, run as one transaction: its reads see one state, and its writes commit together or not at all. */
+  handler?(ctx: Context, input: z.infer<I>, t: Travel): z.input<O>;
+  /** An action that waits on Ri instead. It runs its own transactions around each call, never across one. */
+  run?(ctx: Context, input: z.infer<I>, t: Travel): Promise<z.input<O>>;
 }
 const act = <I extends z.AnyZodObject, O extends z.ZodTypeAny>(def: Def<I, O>) => defineAction({
   name: def.name, title: def.title, description: def.description, input: def.input, output: def.output, effect: def.effect,
   audience: def.audience ?? both, retry: def.retry ?? "safe", ...(def.visibility ? { visibility: def.visibility } : {}),
-  handler: (ctx, input) => guard(async () => def.handler(ctx, input, await travelFor(ctx))) as Promise<z.infer<O>>,
+  handler: (ctx, input) => guard(async () => {
+    if (def.run) return def.run(ctx, input, travelFor(ctx));
+    return within(ctx, (t) => def.handler!(ctx, input, t));
+  }) as Promise<z.infer<O>>,
 });
 
 const listCoverage = (complete: boolean, note: string | null = null) => ({ complete, note });
@@ -83,6 +89,11 @@ const services = (t: Travel, ctx: Context) => ({
   read: createReadModel(t), writes: createWrites(t), sources: createSources(t), view: createView(t),
   followUps: createFollowUps(t), imports: createImports(t), sync: createSync(t, ctx),
 });
+/** Travel for this request, with `work` run as one transaction, so what it reads is one state. */
+const within = <T>(ctx: Pick<Context, "platform">, work: (t: Travel) => T): T => {
+  const t = travelFor(ctx);
+  return t.db.transaction(() => work(t));
+};
 const owner = (t: Travel, ctx: Context, operation: "read" | "write") => {
   const scope = t.resolve(ctx, operation);
   requireOwner(scope);
@@ -324,7 +335,7 @@ const createFollowUp = act({
   name: "create_follow_up", title: "Add a Ri follow-up",
   description: "Create one Ri task linked to a trip, booking, idea or review item, with an optional due date. Ri asks the person to approve it first. Until then it waits as pending, and Travel adds it once approved. Pass the same operationId on a retry or second click to get the same task. Nothing is sent to anyone.",
   input: s.createFollowUpInput, output: s.followUpOutput, effect: "write",
-  async handler(ctx, input, t) {
+  async run(ctx, input, t) {
     return createFollowUps(t).create(ctx, t.resolve(ctx, "write"), input);
   },
 });
@@ -344,7 +355,7 @@ const checkFollowUp = act({
   name: "check_follow_up", title: "Check a follow-up",
   description: "Check whether a linked Ri task still exists and record its availability.",
   input: s.checkFollowUpInput, output: s.followUpSchema, effect: "write",
-  async handler(ctx, input, t) {
+  async run(ctx, input, t) {
     return createFollowUps(t).check(ctx, t.resolve(ctx, "write"), input.id);
   },
 });
@@ -353,7 +364,7 @@ const retryFollowUps = act({
   name: "retry_follow_ups", title: "Add waiting follow-ups to Ri",
   description: "Repeat the identical Ri task request for each follow-up still waiting, so an approval in Ri takes effect. Run by the follow_ups job.",
   input: z.object({}).strict(), output: z.object({ created: z.number().int().min(0), waiting: z.number().int().min(0), summary: z.string() }).strict(), effect: "write", audience: userOnly,
-  async handler(ctx, _input, t) {
+  async run(ctx, _input, t) {
     owner(t, ctx, "write");
     return createFollowUps(t).retryPending(ctx);
   },
@@ -365,7 +376,7 @@ const previewImport = act({
   name: "preview_import", title: "Preview an import",
   description: "Read a chosen file (PDF, text, HTML or saved email, base64) or pasted confirmation and preview the bookings found, their source passages, matching bookings and trip placement. Nothing changes until apply_import. PDFs are read by Ri.",
   input: s.previewImportInput, output: s.previewOutput, effect: "write", visibility: viewOnly,
-  async handler(ctx, input, t) {
+  async run(ctx, input, t) {
     // Anyone who may write imported files: the person, or a connection given "Uploaded and pasted confirmations" and changes.
     return createImports(t).preview(ctx, t.resolve(ctx, "write"), input);
   },
@@ -464,7 +475,7 @@ const checkAccounts = act({
   name: "check_accounts", title: "Check Ri for accounts",
   description: "Ask Ri which mail and calendar accounts Travel may read now, and update Sources. Only a connection allowed to see all of Travel can do this.",
   input: z.object({}).strict(), output: s.listSourcesOutput.extend({ connected: z.boolean(), message: z.string().max(500).nullable() }), effect: "write", visibility: viewOnly,
-  async handler(ctx, _input, t) {
+  async run(ctx, _input, t) {
     owner(t, ctx, "write");
     const sources = createSources(t);
     const hub = hubFor(ctx);
@@ -489,7 +500,7 @@ const listCalendarsAction = act({
   name: "list_calendars", title: "List calendars",
   description: "List the calendars of a calendar account Travel reads, so the person can choose which to check for trip conflicts.",
   input: z.object({ sourceAccount: z.string().min(1).max(320) }).strict(), output: s.calendarsOutput, effect: "read", visibility: viewOnly,
-  async handler(ctx, input, t) {
+  async run(ctx, input, t) {
     owner(t, ctx, "read");
     return createSources(t).calendars(ctx, input.sourceAccount);
   },
@@ -519,7 +530,7 @@ const continueImport = act({
   name: "continue_import", title: "Continue an import",
   description: "Run the next bounded import step for one account now, with the same limits as the automatic job: one mail page with at most ten messages read, or one calendar page.",
   input: s.continueImportInput, output: s.continueOutput, effect: "write", visibility: viewOnly,
-  async handler(ctx, input, t) {
+  async run(ctx, input, t) {
     owner(t, ctx, "write");
     const { sync, sources } = services(t, ctx);
     const account = input.source.slice("account:".length);
@@ -550,7 +561,7 @@ const syncSources = act({
   name: "sync_sources", title: "Import from Gmail and Calendar",
   description: "A few bounded import steps across the accounts Ri lets Travel read: Gmail pages with at most ten messages read each, Calendar pages, and saved sources whose booking is in an attachment or waits for the opted-in AI fallback. Records and each account's checkpoint commit together. Run by the sync_sources job.",
   input: z.object({}).strict(), output: syncOutput, effect: "write", audience: userOnly,
-  async handler(ctx, _input, t) {
+  async run(ctx, _input, t) {
     owner(t, ctx, "write");
     const sync = createSync(t, ctx);
     const hub = hubFor(ctx);
@@ -584,8 +595,7 @@ const showTrip = defineView({
   input: z.object({ id: z.string().max(128).optional().describe("The trip to show. Leave out for the next upcoming trip."), title: z.string().max(80).optional().describe('A short heading, such as "Your Lisbon trip".') }),
   output: z.object({ title: z.string(), detail: s.tripDetailSchema.nullable(), message: z.string().nullable() }),
   invoking: "Getting your trip", invoked: "Your trip",
-  handler: (ctx, input) => guard(async () => {
-    const t = await travelFor(ctx);
+  handler: (ctx, input) => guard(() => within(ctx, (t) => {
     const scope = t.resolve(ctx, "read");
     const read = createReadModel(t);
     const id = input.id ?? tripList(t, scope, { when: "upcoming" })[0]?.id;
@@ -597,7 +607,7 @@ const showTrip = defineView({
       summary: `Showed ${detail.trip.title}, ${detail.trip.dateLabel}: ${detail.bookings.length} booking${detail.bookings.length === 1 ? "" : "s"} recorded${gaps ? `, ${gaps} coverage prompt${gaps === 1 ? "" : "s"}` : ""}${detail.review.length ? `, ${detail.review.length} in Review` : ""}.`,
       data: { title: input.title ?? detail.trip.title, detail, message: null },
     };
-  }),
+  })),
 });
 
 const showTrips = defineView({
@@ -606,8 +616,7 @@ const showTrips = defineView({
   input: z.object({ when: z.enum(["upcoming", "past", "all"]).default("upcoming"), title: z.string().max(80).optional(), limit: z.number().int().min(1).max(20).default(8) }),
   output: z.object({ title: z.string(), trips: z.array(s.tripSchema), more: z.boolean() }),
   invoking: "Getting your trips", invoked: "Your trips",
-  handler: (ctx, input) => guard(async () => {
-    const t = await travelFor(ctx);
+  handler: (ctx, input) => guard(() => within(ctx, (t) => {
     const scope = t.resolve(ctx, "read");
     const all = tripList(t, scope, { when: input.when });
     const trips = all.slice(0, input.limit);
@@ -615,7 +624,7 @@ const showTrips = defineView({
       summary: trips.length ? `Showed ${trips.length}${all.length > trips.length ? "+" : ""} trip${trips.length === 1 ? "" : "s"}: ${trips.map((trip) => `${trip.title} (${trip.dateLabel})`).join("; ")}.` : "No trips match, so the card says so.",
       data: { title: input.title ?? (input.when === "past" ? "Past trips" : input.when === "all" ? "Your trips" : "Upcoming trips"), trips, more: all.length > trips.length },
     };
-  }),
+  })),
 });
 
 const showReview = defineView({
@@ -624,8 +633,7 @@ const showReview = defineView({
   input: z.object({ tripId: z.string().max(128).optional(), title: z.string().max(80).optional() }),
   output: z.object({ title: z.string(), items: z.array(s.reviewItemSchema), owner: z.boolean(), more: z.boolean() }),
   invoking: "Getting Review", invoked: "Review",
-  handler: (ctx, input) => guard(async () => {
-    const t = await travelFor(ctx);
+  handler: (ctx, input) => guard(() => within(ctx, (t) => {
     const scope = t.resolve(ctx, "read");
     const read = createReadModel(t);
     const all = reviewList(t, scope, { state: "open", tripId: input.tripId });
@@ -635,7 +643,7 @@ const showReview = defineView({
       summary: items.length ? `Showed ${all.length} item${all.length === 1 ? "" : "s"} waiting in Review: ${items.slice(0, 6).map((item) => item.headline).join("; ")}.` : "Nothing waits in Review, so the card says so.",
       data: { title: input.title ?? "Waiting in Review", items, owner: scope.kind === "owner", more: all.length > items.length },
     };
-  }),
+  })),
 });
 
 // ─── The application ────────────────────────────────────────────────────────
@@ -656,7 +664,7 @@ export const application: Application = {
   sources: {
     label: "accounts and collections",
     async list(ctx) {
-      return createSources(await travelFor(ctx)).shareable();
+      return within(ctx, (t) => createSources(t).shareable());
     },
   },
   /**
@@ -667,23 +675,23 @@ export const application: Application = {
   records: {
     paths: "/trips/<id> opens a trip's itinerary, /bookings/<id> opens a booking beside its trip, /ideas/<id> opens a saved idea in its trip, /review opens Review",
     async search(ctx, query) {
-      const t = await travelFor(ctx);
-      const scope = t.resolve(ctx, "read");
-      const read = createReadModel(t);
-      const words = query.trim();
-      const trips = tripList(t, scope, { when: "all", ...(words ? { query: words } : {}) }).slice(0, words ? 10 : 20)
-        .map((trip) => ({ path: `/trips/${trip.id}`, title: trip.title, description: `Trip, ${trip.dateLabel}` }));
-      if (!words) return trips;
-      const ids = new Set(t.repo.searchBookingIds(scope, words));
-      const bookings = t.repo.bookings(scope).filter((booking) => ids.has(booking.id)).slice(0, 10).map((booking) => {
-        const record = read.bookingRecord(scope, booking);
-        return { path: `/bookings/${booking.id}`, title: record.title, description: `${record.kindLabel}, ${record.dateLabel}` };
+      return within(ctx, (t) => {
+        const scope = t.resolve(ctx, "read");
+        const read = createReadModel(t);
+        const words = query.trim();
+        const trips = tripList(t, scope, { when: "all", ...(words ? { query: words } : {}) }).slice(0, words ? 10 : 20)
+          .map((trip) => ({ path: `/trips/${trip.id}`, title: trip.title, description: `Trip, ${trip.dateLabel}` }));
+        if (!words) return trips;
+        const ids = new Set(t.repo.searchBookingIds(scope, words));
+        const bookings = t.repo.bookings(scope).filter((booking) => ids.has(booking.id)).slice(0, 10).map((booking) => {
+          const record = read.bookingRecord(scope, booking);
+          return { path: `/bookings/${booking.id}`, title: record.title, description: `${record.kindLabel}, ${record.dateLabel}` };
+        });
+        return [...trips, ...bookings].slice(0, 20);
       });
-      return [...trips, ...bookings].slice(0, 20);
     },
     async read(ctx, path) {
-      const t = await travelFor(ctx);
-      return createView(t).describeRecord(t.resolve(ctx, "read"), path);
+      return within(ctx, (t) => createView(t).describeRecord(t.resolve(ctx, "read"), path));
     },
   },
   connectors: {
@@ -697,17 +705,18 @@ export const application: Application = {
   ],
   migrations: MIGRATIONS,
   async exportData(ctx) {
-    const t = await travelFor(ctx);
-    const scope = t.resolve(ctx, "read");
-    const read = createReadModel(t);
-    const trips = tripList(t, scope, { when: "all" }).concat(tripList(t, scope, { when: "archived" }));
-    return {
-      records: {
-        trips,
-        bookings: t.repo.bookings(scope).map((booking) => read.bookingRecord(scope, booking)),
-        ideas: t.repo.ideas(scope).map(read.ideaRecord),
-        followUps: createFollowUps(t).list(scope),
-      },
-    };
+    return within(ctx, (t) => {
+      const scope = t.resolve(ctx, "read");
+      const read = createReadModel(t);
+      const trips = tripList(t, scope, { when: "all" }).concat(tripList(t, scope, { when: "archived" }));
+      return {
+        records: {
+          trips,
+          bookings: t.repo.bookings(scope).map((booking) => read.bookingRecord(scope, booking)),
+          ideas: t.repo.ideas(scope).map(read.ideaRecord),
+          followUps: createFollowUps(t).list(scope),
+        },
+      };
+    });
   },
 };

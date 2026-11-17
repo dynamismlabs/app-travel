@@ -30,7 +30,7 @@ const folder = () => {
 
 /** What a restore must keep: the triggers and views, the revision, and what search finds. */
 async function observe(h: Harness) {
-  const t = await h.travel();
+  const t = h.travel();
   const schema = t.db.prepare("SELECT type, name FROM sqlite_schema WHERE type IN ('trigger', 'view') ORDER BY name").all().map((row) => `${row.type}:${row.name}`);
   const trips = await h.call("list_trips", { limit: 50, when: "all" });
   const search = (query: string) => h.call("list_bookings", { limit: 50, query }).then((result) => result.items.map((booking: { title: string }) => booking.title).sort());
@@ -80,7 +80,7 @@ describe("backups", () => {
     await backupNode(h.platform, application.config.id, path.join(dir, "backup"));
     // Core 0.2.2 wrote no triggers or views, no rowids, and the full-text index's internal tables.
     const snapshot = JSON.parse(fs.readFileSync(path.join(dir, "backup", "snapshot.json"), "utf8")) as { tables: { name: string; sql: string; columns: string[]; rows: unknown[][] }[]; triggers?: unknown; views?: unknown };
-    const t = await h.travel();
+    const t = h.travel();
     const tables = snapshot.tables.map((table) => table.columns[0] !== "rowid" ? table : { ...table, columns: table.columns.slice(1), rows: table.rows.map((row) => row.slice(1)) });
     const internal = t.db.prepare("PRAGMA table_list").all().filter((row) => row.type === "shadow").map((row) => String(row.name));
     expect(internal.length).toBeGreaterThan(0);

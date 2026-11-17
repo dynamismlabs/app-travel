@@ -6,7 +6,7 @@
  * and a past Mexico City trip. Seeded only into an empty preview database.
  * Every record is marked fictional. No account is read.
  */
-import { accountSource, transaction, type AccessScope } from "../lib/data.js";
+import { accountSource, type AccessScope } from "../lib/data.js";
 import { newMailCheckpoint } from "../lib/sources.js";
 import { parseConfirmation } from "../domain/parse/extract.js";
 import type { Travel } from "../services/core.js";
@@ -27,7 +27,7 @@ export function seedFixtures(t: Travel, actor = "fixture:preview") {
   const intake = createIntake(t);
   const writes = createWrites(t);
   const source = accountSource(FIXTURE_ACCOUNT);
-  transaction(t.db, () => {
+  t.db.transaction(() => {
     t.settings.set({ homeZone: "America/Denver", ownerNames: [fx.FIXTURE_TRAVELER] });
     t.accounts.setup({ account: FIXTURE_ACCOUNT, kind: "mail", historyDays: 90, label: FIXTURE_ACCOUNT_LABEL });
     const checkpoint = { ...newMailCheckpoint(90, new Date("2026-10-15T12:00:00Z")), emailAddress: "alex.rivera@example.test", backfill: { pageToken: null, pages: 2, complete: true, completedAt: "2026-10-15T12:00:00.000Z", oldestAt: "2026-07-20T12:00:00.000Z" }, history: { historyId: "fictional", pageToken: null, checkedAt: "2026-10-15T12:00:00.000Z" }, lane: "history" as const, lastSuccessAt: "2026-10-15T12:00:00.000Z" };

@@ -15,7 +15,6 @@ import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client
 import type { OAuthClientInformationFull, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { serveApp, type RunningApp } from "@app-builder/core/node";
 import { application } from "../src/app.js";
-import { closeTravelDatabases } from "../src/db/connection.js";
 import { seedPreview } from "../src/fixtures/preview.js";
 import { travelFor } from "../src/services/core.js";
 
@@ -29,7 +28,7 @@ beforeAll(async () => {
   delete process.env.APP_URL;
   // The safe-change copy tests before it builds: without dist/mcp.html the core would offer no view tools.
   const viewHTML = fs.existsSync(path.join(root, "dist/mcp.html")) ? undefined : "<!doctype html><title>Travel</title>";
-  running = await serveApp({ ...application, ...(viewHTML ? { viewHTML } : {}) }, { root, dataDir, port: 0, onStop: async () => { closeTravelDatabases(); } });
+  running = await serveApp({ ...application, ...(viewHTML ? { viewHTML } : {}) }, { root, dataDir, port: 0 });
   origin = running.platform.baseURL;
   await seedPreview(running.platform);
 });
@@ -159,10 +158,10 @@ describe("MCP with OAuth", () => {
     const leaks = [/stack/i, /\/Users\//, /\/private\//, /node_modules/, /\.ts:\d+/, /\bat [\w.<>]+ \(/, /SqliteError/, /readonly/i];
     const expectNoLeaks = (text: string) => { for (const leak of leaks) expect(text).not.toMatch(leak); };
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    const t = await travelFor({ platform: running.platform });
+    const t = travelFor({ platform: running.platform });
     const { client } = await connect("Ri · Errors", { sources: null, write: true });
-    // A database failure inside Travel: its connection refuses writes for this test.
-    t.db.exec("PRAGMA query_only = ON");
+    // A database failure inside Travel: SQLite refuses its trip writes for this test, as a read-only file would.
+    t.db.prepare("CREATE TEMP TRIGGER refuse_trips BEFORE INSERT ON trips BEGIN SELECT RAISE(ABORT, 'attempt to write a readonly database'); END").run();
     try {
       const failed = await client.callTool({ name: "save_trip", arguments: { newId: crypto.randomUUID(), title: "Kyoto" } }) as { isError?: boolean; content: { text: string }[] };
       expect(failed.isError).toBe(true);
@@ -172,7 +171,7 @@ describe("MCP with OAuth", () => {
       expectNoLeaks(text);
       expect(JSON.parse(text)).toMatchObject({ error: { message: "This request could not be completed." } });
     } finally {
-      t.db.exec("PRAGMA query_only = OFF");
+      t.db.prepare("DROP TRIGGER temp.refuse_trips").run();
       await client.close();
     }
     expect(logged.mock.calls.map((call) => JSON.stringify(call)).some((line) => /readonly/i.test(line))).toBe(true);

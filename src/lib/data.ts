@@ -1,9 +1,9 @@
 /**
- * Synchronous building blocks for Travel's backend: transactions, list
- * cursors, settings, the per-account work queue, retained source files and
- * error redaction. Everything here runs inside one SQLite transaction on
- * Travel's own connection to the app's database (db/connection.ts). Nothing
- * starts a timer or a loop: the app's declared jobs run each step.
+ * Synchronous building blocks for Travel's backend: list cursors, settings,
+ * the per-account work queue, retained source files and error redaction.
+ * Everything here runs inside one SQLite transaction on the app's database,
+ * through the core's transaction() (db/connection.ts). Nothing starts a
+ * timer or a loop: the app's declared jobs run each step.
  *
  * These helpers came from Ri's old app kit, which Travel no longer uses.
  * Their tables are created by Travel's own migrations (db/migrations.ts).
@@ -11,15 +11,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod/v3";
 
-/** The subset of a synchronous SQLite connection these helpers use. */
+/** The app's database as Travel uses it: synchronous statements and transactions (db/connection.ts). */
 export interface SqlDatabase {
-  exec(sql: string): void;
+  /** Run `work` as one transaction (BEGIN IMMEDIATE), or join the one already open. Synchronous only. */
+  transaction<T>(work: () => T): T;
   prepare(sql: string): {
     run(...params: SqlValue[]): { changes: number | bigint; lastInsertRowid: number | bigint };
     get(...params: SqlValue[]): Record<string, unknown> | undefined;
     all(...params: SqlValue[]): Record<string, unknown>[];
   };
-  readonly isTransaction: boolean;
 }
 export type SqlValue = string | number | bigint | null | Uint8Array;
 
@@ -34,20 +34,6 @@ export class AppError extends Error {
   constructor(readonly code: "invalid_input" | "not_found" | "forbidden" | "revoked" | "conflict" | "busy" | "timeout" | "unsupported" | "app_failed" | "interrupted" | "approval_required", message: string) {
     super(message);
     this.name = "AppError";
-  }
-}
-
-/** Run `work` in one immediate transaction, or join the caller's. */
-export function transaction<T>(db: SqlDatabase, work: () => T): T {
-  if (db.isTransaction) return work();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const result = work();
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
-    throw error;
   }
 }
 
@@ -200,7 +186,7 @@ export function createJobQueue(db: SqlDatabase, options: { now?: () => Date } = 
       return due.find((job) => job.kind !== lastKind) ?? due[0];
     },
     claim(id: string): JobRecord {
-      return transaction(db, () => {
+      return db.transaction(() => {
         const job = get(id);
         if (!job || job.state !== "pending") throw new AppError("conflict", "This background step is no longer pending");
         // Later than any step before it, so two steps in the same millisecond (or under a fixed

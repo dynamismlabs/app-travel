@@ -17,7 +17,6 @@ import { build } from "esbuild";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { createTestConnection, serveApp, type RunningApp } from "@app-builder/core/node";
 import { application } from "../src/app.js";
-import { closeTravelDatabases } from "../src/db/connection.js";
 import { seedPreview } from "../src/fixtures/preview.js";
 import type { HostOptions } from "./support/view-host.js";
 
@@ -51,7 +50,7 @@ describe.skipIf(!chrome || !built)("Travel's view in the kit's strict MCP Apps h
   // Travel's own page is server-rendered, as in src/node.ts.
   const serve = async (dir: string) => {
     const handler = createRequestHandler(await import(pathToFileURL(path.join(root, "dist/server/index.js")).href) as ServerBuild, "production");
-    return serveApp(application, { root, dataDir: dir, port: 0, render: (request, platform) => handler(request, { platform }), onStop: async () => { closeTravelDatabases(path.join(dir, "data.sqlite")); } });
+    return serveApp(application, { root, dataDir: dir, port: 0, render: (request, platform) => handler(request, { platform }) });
   };
 
   beforeAll(async () => {

@@ -409,7 +409,7 @@ describe("preview fixture", () => {
     expect(await seedPreview(h.platform)).toBe("Seeded Travel's fictional preview trips.");
     const preview = await h.call("open_view", { path: "/", query: {} });
     expect(preview).toMatchObject({ section: "trip", fictional: true, setup: { trips: 3, reviewOpen: 3 } });
-    expect((await h.travel()).settings.fixtureSeeded()).toBe(true);
+    expect(h.travel().settings.fixtureSeeded()).toBe(true);
     expect(await seedPreview(h.platform)).toBe("Travel already has records, so the fictional preview wasn't added.");
   });
 });

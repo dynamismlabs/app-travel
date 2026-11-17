@@ -41,8 +41,8 @@ describe("Gmail import", () => {
     const bookings = (await h.call("list_bookings", { limit: 50, status: "all", kind: "all" }, both)).items;
     expect(bookings.map((booking: { title: string }) => booking.title).sort()).toEqual(["Flight RA 204", "Riverside House", "Train Coast Line 11"]);
     expect(bookings.find((booking: { title: string }) => booking.title === "Train Coast Line 11").sources[0].sourceLabel).toContain("Email from Coast Line Rail");
-    expect((await h.travel()).repo.evidenceByExternal("account:acct-a", "news-1")).toBeNull();
-    expect((await h.travel()).mailIndex.counts("acct-a")).toEqual({ kept: 2, skipped: 1, removed: 0 });
+    expect(h.travel().repo.evidenceByExternal("account:acct-a", "news-1")).toBeNull();
+    expect(h.travel().mailIndex.counts("acct-a")).toEqual({ kept: 2, skipped: 1, removed: 0 });
     // The same messages delivered again through history are not read twice.
     const reads = () => capability.calls.filter((call) => call.name === "gmail__read_message").length;
     const before = reads();
@@ -135,7 +135,7 @@ describe("Gmail import", () => {
     expect(steps[2].summary).toBe("The account was busy. Travel will try again shortly.");
     const sources = await h.call("list_sources", {}, owner());
     expect(sources.accounts[0]).toMatchObject({ status: "error", error: "The account was busy. Travel will try again shortly." });
-    expect((await h.travel()).mailIndex.counts("acct-a").kept).toBe(4);
+    expect(h.travel().mailIndex.counts("acct-a").kept).toBe(4);
     // Continue retries now, reading only what is left, at most ten bodies a step.
     await run(h, "acct-a", 4);
     const reads = capability.calls.filter((call) => call.name === "gmail__read_message").map((call) => call.input.messageId);
@@ -256,7 +256,7 @@ describe("enrichment", () => {
     await run(h, "acct-a", 6);
     expect(capability.calls.some((call) => call.name === "ri__ai_text")).toBe(true);
     expect((await h.call("list_bookings", { limit: 50, status: "all", kind: "all" })).items).toEqual([]);
-    const evidence = (await h.travel()).repo.evidenceByExternal("account:acct-a", "vague-1")!;
+    const evidence = h.travel().repo.evidenceByExternal("account:acct-a", "vague-1")!;
     expect(evidence.parseStatus).toBe("pending_ai");
     expect(evidence.parseNote).toBe("Extraction unavailable. The qualified AI harness is not available.");
   });
@@ -323,7 +323,7 @@ describe.each([
     const h = await harness({ hub: capability });
     const caller = owner();
     await run(h, "acct-a", 4, caller);
-    const t = await h.travel();
+    const t = h.travel();
     expect(t.mailIndex.counts("acct-a")).toEqual({ kept: 1, skipped: 0, removed: 1 });
 
     // Gmail answers an expired history ID with 404: the window is rescanned, not the item dropped.
@@ -371,7 +371,7 @@ describe("lifecycle", () => {
     const trip = await h.call("get_trip", { id: lisbonTrip }, both);
     expect(trip.trip.notes).toContain("Kept from Riverside House: Ask for a quiet room");
     expect(trip.ideaCount).toBe(1);
-    expect((await h.travel()).mailIndex.counts("acct-a")).toEqual({ kept: 0, skipped: 0, removed: 0 });
+    expect(h.travel().mailIndex.counts("acct-a")).toEqual({ kept: 0, skipped: 0, removed: 0 });
     const sources = await h.call("list_sources", {}, both);
     expect(sources.accounts.find((item: { account: string }) => item.account === "acct-a")).toMatchObject({ paused: true, records: 0 });
     await expect(h.call("delete_source_data", { source: "manual" }, both)).rejects.toThrow(/yours/);
@@ -428,6 +428,6 @@ describe("more Gmail cases", () => {
     expect(reads).toEqual(["html-1"]);
     const [dinner] = (await h.call("list_bookings", { limit: 50, status: "all", kind: "all" })).items;
     expect(dinner).toMatchObject({ title: "Dinner at Mesa", reference: "MS-1834" });
-    expect((await h.travel()).mailIndex.outcome("acct-a", "lunch-1")).toBe("skipped");
+    expect(h.travel().mailIndex.outcome("acct-a", "lunch-1")).toBe("skipped");
   });
 });

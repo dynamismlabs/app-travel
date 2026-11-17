@@ -17,7 +17,7 @@
  */
 import { z } from "zod/v3";
 import { ApprovalDenied, ApprovalPending, ConnectorError, SetupRequired, SourceUnavailable, connectors, type ConnectorAccount, type Context } from "@app-builder/core";
-import { AppError, nowIso, type SqlDatabase, transaction } from "./data.js";
+import { AppError, nowIso, type SqlDatabase } from "./data.js";
 import { fromCapabilityMessage, parseGmailMessage, parseMetadata, type MailHeaders, type MailMessage } from "./mail.js";
 
 // ─── The hub ─────────────────────────────────────────────────────────────────
@@ -606,7 +606,7 @@ export function createMailIndex(db: SqlDatabase) {
       return result;
     },
     forget(account: string) {
-      transaction(db, () => db.prepare("DELETE FROM app_mail_messages WHERE account = ?").run(account));
+      db.transaction(() => db.prepare("DELETE FROM app_mail_messages WHERE account = ?").run(account));
     },
   };
 }

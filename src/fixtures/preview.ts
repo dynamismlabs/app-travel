@@ -8,6 +8,6 @@ import { travelFor } from "../services/core.js";
 import { seedFixtures } from "./seed.js";
 
 export async function seedPreview(platform: Platform): Promise<string> {
-  const t = await travelFor({ platform });
+  const t = travelFor({ platform });
   return seedFixtures(t) ? "Seeded Travel's fictional preview trips." : "Travel already has records, so the fictional preview wasn't added.";
 }

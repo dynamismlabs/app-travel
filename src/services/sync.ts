@@ -9,7 +9,7 @@
  * Accounts and tools come from Ri's hub: what the person allowed Travel on
  * its page in Ri.
  */
-import { AppError, accountSource, redact, transaction, type JobRecord } from "../lib/data.js";
+import { AppError, accountSource, redact, type JobRecord } from "../lib/data.js";
 import type { Context } from "@app-builder/core";
 import { emailDomain, type MailHeaders } from "../lib/mail.js";
 import { basicCalendarSyncStep, basicMailSyncStep, calendarSyncStep, failureKind, gmailSyncStep, hubFor, HUB_TOOLS, newCalendarCheckpoint, type CalendarCheckpoint, type CalendarEvent, type Hub, type MailCheckpoint } from "../lib/sources.js";
@@ -101,10 +101,10 @@ export function createSync(t: Travel, ctx: Context) {
         relabeled: (id, labels, wasAdded) => { if (!wasAdded && labels.some((label) => label === "TRASH" || label === "SPAM")) pending.push(() => restore(account, id, actor)); },
       });
     } catch (error) {
-      if (pending.length) transaction(db, apply);
+      if (pending.length) db.transaction(apply);
       throw error;
     }
-    transaction(db, () => {
+    db.transaction(() => {
       apply();
       accounts.commit(account, "mail", result.checkpoint, result.checkpoint.backfill.complete ? "ready" : "importing", result.checkpoint.emailAddress);
     });
@@ -146,7 +146,7 @@ export function createSync(t: Travel, ctx: Context) {
     const complete = stored.calendars.every((id) => checkpoints[id]?.completedAt && !checkpoints[id]?.pageToken);
     const count = events.length;
     // The page's events and its checkpoint commit together.
-    transaction(db, () => {
+    db.transaction(() => {
       for (const event of events) storeEvent(account, pending, event);
       accounts.commit(account, "calendar", checkpoints, complete ? "ready" : "importing");
     });
@@ -185,7 +185,7 @@ export function createSync(t: Travel, ctx: Context) {
         }
         read++;
         const parse = parseConfirmation({ text, subject: evidence.title, senderName: evidence.sender, receivedAt: evidence.receivedAt });
-        transaction(db, () => {
+        db.transaction(() => {
           const textBlob = intake.storeText(text);
           if (parse.bookings.length) {
             repo.updateEvidence(evidence.id, { parseStatus: "parsed", parseMethod: "deterministic", textBlob, parseNote: null });
@@ -209,7 +209,7 @@ export function createSync(t: Travel, ctx: Context) {
         notes.push(result.reason);
         break;
       }
-      transaction(db, () => {
+      db.transaction(() => {
         if (result.status === "ok") {
           repo.updateEvidence(evidence.id, { parseStatus: "partial", parseMethod: "ai", parseNote: "AI suggestion waiting in Review" });
           const parse = { bookings: result.bookings, forwarded: evidence.forwarded, travelLike: true, notes: [] };
@@ -246,7 +246,7 @@ export function createSync(t: Travel, ctx: Context) {
         .filter((item) => !options.only || (item.account === options.only.account && item.kind === options.only.kind));
       if (options.only && !granted.length) throw new AppError("forbidden", "Allow this account for Travel in Ri first");
       const sourceKeys = new Set<string>();
-      transaction(db, () => {
+      db.transaction(() => {
         for (const item of granted) {
           const kind = item.kind;
           const source = accountSource(item.account);
@@ -299,7 +299,7 @@ export function createSync(t: Travel, ctx: Context) {
       : failure === "choose_account" ? "Ri asked which account to use. Check Travel's accounts in Ri."
       : failure === "busy" ? "The account was busy. Travel will try again shortly."
       : redact(error);
-    transaction(db, () => {
+    db.transaction(() => {
       // A disconnected hub retries with backoff, so updates resume on their own after reconnecting.
       jobs.fail(job.id, reason, { retryable: failure !== "not_allowed" });
       if (accounts.get(account, kind)) accounts.failed(account, kind, failure === "reconnect" || failure === "not_allowed" || failure === "choose_account" ? "reconnect" : "error", reason);

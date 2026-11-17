@@ -1,7 +1,8 @@
 /**
  * The Travel instance for one request: storage, settings and the helpers
- * every action uses. It runs on Travel's synchronous connection to the app's
- * database (db/connection.ts). Opening it does no work: no timers, no sync.
+ * every action uses. It runs on the app's database through the core's
+ * transaction() (db/connection.ts). Opening it does no work: no timers, no
+ * sync.
  *
  * Who is calling comes from the kit's context:
  * - the person's own browser (no connection) and the app's jobs see everything
@@ -11,7 +12,7 @@
  */
 import { z } from "zod/v3";
 import type { Context } from "@app-builder/core";
-import { AppError, createBlobStore, createJobQueue, createSettings, transaction, type AccessScope, type Operation, type SqlDatabase } from "../lib/data.js";
+import { AppError, createBlobStore, createJobQueue, createSettings, type AccessScope, type Operation, type SqlDatabase } from "../lib/data.js";
 import { createAccountStore, createMailIndex } from "../lib/sources.js";
 import { isValidZone, todayIn } from "../lib/time.js";
 import { travelDatabase } from "../db/connection.js";
@@ -107,12 +108,13 @@ export function createTravel(db: SqlDatabase, options: OpenOptions = {}) {
       return actorOf(ctx);
     },
     /**
-     * Run one write as one transaction. Ri kept a receipt per invocation so a
-     * retried call returned its first result; MCP has no invocation IDs, so
-     * creates take a client-made ID and updates take the revision they edited.
+     * Run one write as one transaction, or as part of the action's own. Ri
+     * kept a receipt per invocation so a retried call returned its first
+     * result; MCP has no invocation IDs, so creates take a client-made ID and
+     * updates take the revision they edited.
      */
     mutate<T>(work: () => T): T {
-      return transaction(db, work);
+      return db.transaction(work);
     },
   };
   return travel;
@@ -136,6 +138,6 @@ const pinned = () => {
 };
 
 /** The Travel instance for this request. */
-export async function travelFor(ctx: Pick<Context, "platform">): Promise<Travel> {
-  return createTravel(await travelDatabase(ctx.platform), { now: clocks.get(ctx.platform.driver) ?? pinned() });
+export function travelFor(ctx: Pick<Context, "platform">): Travel {
+  return createTravel(travelDatabase(ctx), { now: clocks.get(ctx.platform.driver) ?? pinned() });
 }

@@ -27,7 +27,7 @@ describe("the kit's fixture source", () => {
     const bookings = (await h.call("list_bookings", { limit: 50, status: "all", kind: "all" })).items.map((booking: { title: string }) => booking.title).sort();
     expect(bookings).toEqual(["Alder Street Inn", "Dinner at Mesa", "Flight RA 204", "Riverside House", "Train Coast Line 11"]);
     // The newsletter was read and dropped, never kept.
-    const t = await h.travel();
+    const t = h.travel();
     expect(t.repo.evidenceByExternal("account:alex.rivera@example.test", "fx-newsletter")).toBeNull();
     const sources = await h.call("list_sources", {}, owner());
     expect(sources.accounts.map((account: { id: string; status: string }) => [account.id, account.status]).sort()).toEqual([["calendar:default", "ready"], ["mail:alex.rivera@example.test", "ready"]]);
@@ -145,7 +145,7 @@ describe("the kit's fixture source", () => {
     const data = fixtures();
     const h = await harness({ hub: fixtureSource(data) });
     await (await runJobNow(application, h.platform, "sync_sources")).done;
-    const t = await h.travel();
+    const t = h.travel();
     const checkpoint = JSON.stringify(t.accounts.get("alex.rivera@example.test", "mail")!.checkpoint);
     data.unavailable = true;
     const start = Date.now();

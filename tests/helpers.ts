@@ -24,7 +24,6 @@ import { TRPCError } from "@trpc/server";
 import { ApprovalPending, ConnectorError, createActionRouter, SetupRequired, SourceUnavailable, type ConnectorSource, type Context, type Platform } from "@app-builder/core";
 import { openNodePlatform } from "@app-builder/core/node";
 import { application } from "../src/app.js";
-import { closeTravelDatabases } from "../src/db/connection.js";
 import { AppError } from "../src/lib/data.js";
 import { setTravelClock, travelFor, type Travel } from "../src/services/core.js";
 
@@ -53,7 +52,7 @@ export interface Harness {
   call<T = any>(action: string, input: unknown, caller?: Caller): Promise<T>;
   /** Replace the hub (null: Travel isn't connected to Ri). */
   setHub(hub: ConnectorSource | null): void;
-  travel(): Promise<Travel>;
+  travel(): Travel;
 }
 
 const NOT_CONNECTED: ConnectorSource = {
@@ -67,7 +66,7 @@ const CODES: Record<string, AppError["code"]> = { NOT_FOUND: "not_found", FORBID
 export async function harness(options: { now?: string; hub?: ConnectorSource | null; /** An existing data directory, such as a restored backup. Removed afterwards. */ dataDir?: string } = {}): Promise<Harness> {
   const dir = options.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "travel-test-"));
   const opened = await openNodePlatform(application, { dataDir: dir, localOwner: true, baseURL: "http://127.0.0.1:4334" });
-  created.push({ dir, close: () => { closeTravelDatabases(path.join(dir, "data.sqlite")); opened.close(); } });
+  created.push({ dir, close: () => opened.close() });
   let now = options.now ? new Date(options.now) : new Date("2026-10-15T12:00:00.000Z");
   setTravelClock(opened.platform, () => now);
   opened.platform.connectors = options.hub === undefined ? NOT_CONNECTED : options.hub ?? NOT_CONNECTED;
