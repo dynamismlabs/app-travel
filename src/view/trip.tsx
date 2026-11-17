@@ -11,13 +11,14 @@ import {
   AppShell, AskRiButton, Button, ButtonRow, Checkbox, ConflictNotice, DataTable, DateInput, Dialog, EmptyState, ErrorState, FollowUpDialog, InlineError, KeyValueList, LoadingState, Menu,
   Notice, SearchField, SectionPanel, SectionTabs, SegmentedControl, SplitView, StatusLabel, TextArea, TextInput, Toolbar, useAnnounce, useAppLayout, useMutation, useQuery, useRiApp,
 } from "../ui/index.js";
+import { OpenInBrowser } from "@app-builder/core/react";
 import { formatDate } from "../lib/time.js";
 import { useNav } from "./app.js";
 import { BookingInspector } from "./inspector.js";
 import { IdeasTab } from "./ideas.js";
 import { StateNotice } from "./trips.js";
 import type { Booking, CalendarState, Day, FollowUp, FollowUpResult, Gap, Item, Route, StatusFilter, Trip, TripDetail, TripTab, Write } from "./types.js";
-import { dayChip, dayPrompt, errorText, gapPrompt, plural, STATUS_LABELS, STATUS_TONES, timeLabel, travelersLine, tripPrompt, uuid, cleanError, cleanly } from "./util.js";
+import { pathOf, dayChip, dayPrompt, errorText, gapPrompt, plural, STATUS_LABELS, STATUS_TONES, timeLabel, travelersLine, tripPrompt, uuid, cleanError, cleanly } from "./util.js";
 
 type TripRoute = Extract<Route, { section: "trip" }>;
 
@@ -39,6 +40,15 @@ export function TripScreen() {
     setRevisions({ [detail.data.trip.id]: detail.data.trip.revision, ...(selected ? { [selected.id]: selected.revision } : {}) });
     app.select(selected ? { id: selected.id, title: `${selected.title}, ${selected.dateLabel}` } : { id: detail.data.trip.id, title: `${detail.data.trip.title} trip, ${detail.data.trip.dateLabel}` });
   }, [detail.data, route.selected]);
+  // Where the person is, for the assistant and Open in browser: the trip, its tab and what narrows it.
+  useEffect(() => {
+    if (!trip) return;
+    const filters: Record<string, string> = { tab: route.tab };
+    if (route.day) filters.day = route.day;
+    if (route.status !== "all") filters.status = route.status;
+    if (route.q) filters.search = route.q;
+    app.setSection({ title: `${trip.title} trip, ${trip.dateLabel}`, path: pathOf(route), filters });
+  }, [trip?.title, trip?.dateLabel, pathOf(route)]);
 
   if (detail.error && !detail.data)
     return (
@@ -278,7 +288,7 @@ function TripOverview({ detail, onEditTrip, onFollowUp, onSelectDay }: { detail:
     setExportError(null);
     try {
       const file = await app.call<{ fileName: string; mimeType: string; text: string }>("export_trip", { id: trip.id, format });
-      await app.download({ name: file.fileName, mimeType: file.mimeType, text: file.text });
+      if (!(await app.download({ name: file.fileName, mimeType: file.mimeType, text: file.text }))) throw new Error("The file wasn't saved here. Open Travel in your browser to export it.");
       announce("Export ready");
     } catch (error) {
       setExportError(errorText(error, "The export did not finish"));
@@ -337,6 +347,8 @@ function TripOverview({ detail, onEditTrip, onFollowUp, onSelectDay }: { detail:
         {data.owner && trip.projection === "full" && (
           <ButtonRow>
             <Button size="sm" variant="quiet" onClick={onEditTrip}>Edit trip</Button>
+            {/* Without the host's save-file call, the way out is Travel's own page. */}
+            {!app.canDownload && <OpenInBrowser className="ri-button ri-button--quiet ri-button--sm">Export in browser</OpenInBrowser>}
             {app.canDownload && <Menu label="Export" size="sm" variant="quiet" items={[{ id: "csv", label: "Itinerary as CSV" }, { id: "json", label: "Everything as JSON" }]} onSelect={(id) => void exportTrip(id as "csv" | "json")} />}
           </ButtonRow>
         )}

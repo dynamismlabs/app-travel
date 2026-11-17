@@ -37,6 +37,7 @@ const CARD_CSS = `
 .tv-card__time small { display: block; font-size: 10px; }
 .tv-card__title { overflow-wrap: anywhere; }
 .tv-card__title small { display: block; color: var(--ri-muted); font-size: 11px; }
+.tv-card__open { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--ri-border-strong); text-underline-offset: 3px; cursor: pointer; }
 .tv-card__flag { color: var(--ri-warn); font-size: 12px; margin: 0; }
 .tv-card__rows { list-style: none; margin: 0; padding: 0; }
 .tv-card__row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ri-border); }
@@ -61,11 +62,12 @@ export function TripCard({ data }: { data: { title: string; detail: TripDetail |
     return () => client.select(null);
   }, [detail?.trip.id]);
   if (!detail) return <ViewCard title={data.title}><p className="view-empty">{data.message}</p></ViewCard>;
+  const open = (path: string) => void client.openFullscreen(path).catch(() => {});
   const gaps = detail.coverage.gaps.filter((gap) => !gap.dismissed);
   const days = detail.days.filter((day) => day.items.length);
   const shown = days.slice(0, 10);
   return (
-    <ViewCard title={data.title} count={detail.trip.dateLabel} footer={days.length > shown.length ? `${days.length - shown.length} more days in ${client.config.name}.` : undefined}>
+    <ViewCard title={data.title} count={detail.trip.dateLabel} footer={<>{days.length > shown.length ? `${days.length - shown.length} more days in ${client.config.name}. ` : null}{client.view?.canFullscreen && <button type="button" className="text-button" onClick={() => open(`/trips/${detail.trip.id}`)}>Open this trip</button>}</>}>
       <div className="tv-card">
         <p className="tv-card__meta">{detail.bookings.length} booking{detail.bookings.length === 1 ? "" : "s"} recorded{detail.trip.destinations.length ? ` · ${detail.trip.destinations.join(", ")}` : ""}</p>
         {gaps.slice(0, 3).map((gap) => <p key={gap.key} className="tv-card__flag">{gap.message}</p>)}
@@ -79,7 +81,7 @@ export function TripCard({ data }: { data: { title: string; detail: TripDetail |
                   {day.items.slice(0, 8).map((item) => (
                     <li key={item.id} className="tv-card__item">
                       <span className="tv-card__time">{item.time ?? "All day"}{item.zoneLabel ? <small>{item.zoneLabel}</small> : null}</span>
-                      <span className="tv-card__title">{item.title}{item.status !== "confirmed" ? ` (${item.status})` : ""}<small>{item.subtitle}</small></span>
+                      <span className="tv-card__title">{client.view?.canFullscreen ? <button type="button" className="tv-card__open" aria-label={`Open ${item.title}`} onClick={() => open(`/bookings/${item.bookingId}`)}>{item.title}</button> : item.title}{item.status !== "confirmed" ? ` (${item.status})` : ""}<small>{item.subtitle}</small></span>
                     </li>
                   ))}
                 </ul>
@@ -103,7 +105,7 @@ export function TripsCard({ data }: { data: { title: string; trips: Trip[]; more
         <ul className="tv-card tv-card__rows">
           {data.trips.map((trip) => (
             <li key={trip.id} className="tv-card__row">
-              <button type="button" onClick={() => client.select({ id: trip.id, title: `${trip.title} trip, ${trip.dateLabel}` })}>
+              <button type="button" onClick={() => { client.select({ id: trip.id, title: `${trip.title} trip, ${trip.dateLabel}` }); if (client.view?.canFullscreen) void client.openFullscreen(`/trips/${trip.id}`).catch(() => {}); }}>
                 <strong>{trip.title}</strong>
                 <span>{trip.dateLabel} · {trip.bookingCount} booking{trip.bookingCount === 1 ? "" : "s"}{trip.attention ? ` · ${trip.attention}` : ""}</span>
               </button>
@@ -125,7 +127,7 @@ export function ReviewCard({ data }: { data: { title: string; items: ReviewItem[
   const [items] = useState(data.items);
   useEffect(() => () => client.select(null), [client.select]);
   return (
-    <ViewCard title={data.title} count={items.length ? `${items.length}${data.more ? "+" : ""}` : undefined} footer={items.length ? `Decide each one in ${client.config.name}'s Review.` : undefined}>
+    <ViewCard title={data.title} count={items.length ? `${items.length}${data.more ? "+" : ""}` : undefined} footer={items.length ? <>{`Decide each one in ${client.config.name}'s Review. `}{client.view?.canFullscreen && <button type="button" className="text-button" onClick={() => void client.openFullscreen("/review").catch(() => {})}>Open Review</button>}</> : undefined}>
       {items.length ? (
         <ul className="tv-card tv-card__rows">
           {items.map((item) => (

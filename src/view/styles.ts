@@ -1,5 +1,8 @@
 /** Travel's own styles, prefixed tr-, on top of the kit's neutral tokens. */
 export const TRAVEL_CSS = `
+.tr-hostbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem 0; }
+.tr-hostbar .external-link-address, .ri-link-copy__address { font-size: 0.75rem; color: var(--ri-muted); overflow-wrap: anywhere; user-select: all; }
+.ri-ask--copy summary { cursor: pointer; }
 .tr-back { margin: 0 0 0.75rem -0.5rem; color: var(--ri-muted); }
 .tr-back:hover { color: var(--ri-text); }
 .tr-crumb { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }

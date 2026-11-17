@@ -6,7 +6,7 @@
  * provided, currencies are never converted or added, and nothing is ranked.
  */
 import { useEffect, useState } from "react";
-import { AskRiButton, Button, ButtonRow, Checkbox, DataTable, Dialog, EmptyState, ErrorState, InlineError, KeyValueList, LoadingState, MoneyInput, Notice, Select, TextArea, TextInput, Toolbar, useAnnounce, useMutation, useQuery, type MoneyValue } from "../ui/index.js";
+import { AskRiButton, Button, ButtonRow, Checkbox, DataTable, Dialog, EmptyState, ErrorState, InlineError, KeyValueList, LoadingState, MoneyInput, Notice, Select, TextArea, TextInput, Toolbar, useAnnounce, useMutation, useQuery, type MoneyValue, useRiApp } from "../ui/index.js";
 import { formatDate } from "../lib/time.js";
 import { useNav } from "./app.js";
 import type { Compare, Idea, List, Trip, Write } from "./types.js";
@@ -22,6 +22,12 @@ export function IdeasTab({ trip, selected, onSelect }: { trip: Trip; selected: s
   const [editing, setEditing] = useState<Idea | "new" | null>(null);
   const items = ideas.data?.items ?? [];
   useEffect(() => { setChosen((list) => list.filter((id) => items.some((idea) => idea.id === id))); }, [ideas.data]);
+  const app = useRiApp();
+  // Ideas chosen to compare reach the assistant as several selected records.
+  useEffect(() => {
+    app.selectMany(chosen.map((id) => items.find((idea) => idea.id === id)).filter((idea): idea is Idea => !!idea).map((idea) => ({ id: idea.id, title: `Idea: ${idea.title}` })));
+  }, [chosen.join("|"), ideas.data]);
+  useEffect(() => () => app.selectMany([]), [app.selectMany]);
   const toggle = (id: string, on: boolean) => setChosen((list) => (on ? [...list.filter((item) => item !== id), id].slice(-4) : list.filter((item) => item !== id)));
   if (ideas.error && !ideas.data) return <ErrorState message={cleanError(ideas.error)} onRetry={() => void ideas.reload()} />;
   if (!ideas.data) return <LoadingState label="Loading ideas" />;

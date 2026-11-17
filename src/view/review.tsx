@@ -5,8 +5,8 @@
  * possible duplicates and extracted details to check. Each item compares the
  * recorded and proposed values with its source before anything changes.
  */
-import { useState } from "react";
-import { AppShell, AskRiButton, Button, ButtonRow, EmptyState, ErrorState, InlineError, LoadingState, RadioGroup, ReviewCompare, SectionPanel, Select, SourceLine, StatusLabel, TextInput, useAnnounce, useMutation, useQuery } from "../ui/index.js";
+import { useEffect, useState } from "react";
+import { AppShell, AskRiButton, Button, ButtonRow, EmptyState, ErrorState, InlineError, LoadingState, RadioGroup, ReviewCompare, SectionPanel, Select, SourceLine, StatusLabel, TextInput, useAnnounce, useMutation, useQuery, useRiApp } from "../ui/index.js";
 import { MainTabs, useNav } from "./app.js";
 import { BookingFields, draftFromForm, formFromDraft } from "./forms.js";
 import { SourceDialog } from "./inspector.js";
@@ -14,8 +14,10 @@ import type { List, ReviewItem, ReviewWrite, SourceRef, Trip } from "./types.js"
 import { errorText, plural, cleanError } from "./util.js";
 
 export function ReviewScreen() {
+  const app = useRiApp();
   const { route, navigate, data } = useNav();
   const tripId = route.section === "review" ? route.tripId : null;
+  useEffect(() => { app.setSection({ title: "Review", path: tripId ? `/review?trip=${encodeURIComponent(tripId)}` : "/review", ...(tripId ? { filters: { trip: tripId } } : {}) }); }, [tripId]);
   const items = useQuery<List<ReviewItem>>("list_review_items", { limit: 100, state: "open", ...(tripId ? { tripId } : {}) });
   const trips = useQuery<List<Trip>>("list_trips", { limit: 100, when: "all" });
   const [source, setSource] = useState<SourceRef | null>(null);

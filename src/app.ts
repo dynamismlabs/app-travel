@@ -47,6 +47,8 @@ async function guard<T>(work: () => Promise<T> | T): Promise<T> {
 
 type Audience = ("user" | "agent")[];
 const both: Audience = ["user", "agent"];
+/** The person decides these in Travel's screen. Ri's Travel kept them from chats too. */
+const viewOnly: ("model" | "app")[] = ["app"];
 const userOnly: Audience = ["user"];
 interface Def<I extends z.AnyZodObject, O extends z.ZodTypeAny> {
   name: string;
@@ -57,11 +59,17 @@ interface Def<I extends z.AnyZodObject, O extends z.ZodTypeAny> {
   effect: "read" | "write" | "delete";
   audience?: Audience;
   retry?: "safe" | "unsafe";
+  /**
+   * `["app"]`: the person's own decision, callable from Travel's screen but
+   * kept from the assistant's model by a host that follows MCP Apps (Ri does).
+   * The app's own checks still apply.
+   */
+  visibility?: ("model" | "app")[];
   handler(ctx: Context, input: z.infer<I>, t: Travel): Promise<z.input<O>> | z.input<O>;
 }
 const act = <I extends z.AnyZodObject, O extends z.ZodTypeAny>(def: Def<I, O>) => defineAction({
   name: def.name, title: def.title, description: def.description, input: def.input, output: def.output, effect: def.effect,
-  audience: def.audience ?? both, retry: def.retry ?? "safe",
+  audience: def.audience ?? both, retry: def.retry ?? "safe", ...(def.visibility ? { visibility: def.visibility } : {}),
   handler: (ctx, input) => guard(async () => def.handler(ctx, input, await travelFor(ctx))) as Promise<z.infer<O>>,
 });
 
@@ -211,7 +219,7 @@ const saveBooking = act({
 const deleteBooking = act({
   name: "delete_booking", title: "Remove a booking",
   description: "Remove a booking from Travel. Its sources stay recorded. Needs the revision you saw. Only a connection allowed to see all of Travel can do this.",
-  input: s.deleteBookingInput, output: s.deleteOutput, effect: "delete",
+  input: s.deleteBookingInput, output: s.deleteOutput, effect: "delete", visibility: viewOnly,
   handler(ctx, input, t) {
     const scope = owner(t, ctx, "write");
     return t.mutate(() => createWrites(t).deleteBooking(scope, t.actor(ctx), input));
@@ -292,8 +300,8 @@ const listReview = act({
 
 const reviewChange = act({
   name: "review_change", title: "Decide a review item",
-  description: "Decide a review item: accept a change or keep current values, assign a reservation to a trip or start a new one, link a possible duplicate or keep it separate, confirm extracted details, or dismiss. Needs the item's revision. The person decides Review: only do this when they asked for this exact decision. Only a connection allowed to see all of Travel can do this.",
-  input: s.reviewChangeInput, output: s.writeReview, effect: "write",
+  description: "Decide a review item: accept a change or keep current values, assign a reservation to a trip or start a new one, link a possible duplicate or keep it separate, confirm extracted details, or dismiss. Needs the item's revision. The person decides Review in Travel's screen, so hosts keep this from the assistant. Only a connection allowed to see all of Travel can do this.",
+  input: s.reviewChangeInput, output: s.writeReview, effect: "write", visibility: viewOnly,
   handler(ctx, input, t) {
     const scope = owner(t, ctx, "write");
     return t.mutate(() => createWrites(t).reviewChange(scope, t.actor(ctx), input));
@@ -356,7 +364,7 @@ const retryFollowUps = act({
 const previewImport = act({
   name: "preview_import", title: "Preview an import",
   description: "Read a chosen file (PDF, text, HTML or saved email, base64) or pasted confirmation and preview the bookings found, their source passages, matching bookings and trip placement. Nothing changes until apply_import. PDFs are read by Ri.",
-  input: s.previewImportInput, output: s.previewOutput, effect: "write",
+  input: s.previewImportInput, output: s.previewOutput, effect: "write", visibility: viewOnly,
   async handler(ctx, input, t) {
     // Anyone who may write imported files: the person, or a connection given "Uploaded and pasted confirmations" and changes.
     return createImports(t).preview(ctx, t.resolve(ctx, "write"), input);
@@ -366,7 +374,7 @@ const previewImport = act({
 const applyImport = act({
   name: "apply_import", title: "Apply an import",
   description: "Apply exactly the stored preview once, by preview ID and digest. Adds or updates the matching bookings, places them in trips and sends anything uncertain to Review. A repeat returns the first result.",
-  input: s.applyImportInput, output: s.applyOutput, effect: "write",
+  input: s.applyImportInput, output: s.applyOutput, effect: "write", visibility: viewOnly,
   handler(ctx, input, t) {
     return createImports(t).apply(ctx, t.resolve(ctx, "write"), input);
   },
@@ -403,7 +411,7 @@ const getEvidence = act({
 const exportTrip = act({
   name: "export_trip", title: "Export a trip",
   description: "Export one trip's itinerary, bookings and ideas as JSON or CSV text. Local times keep their zones. Only a connection allowed to see all of Travel can do this.",
-  input: s.exportTripInput, output: s.exportOutput, effect: "read",
+  input: s.exportTripInput, output: s.exportOutput, effect: "read", visibility: viewOnly,
   handler(ctx, input, t) {
     return createView(t).exportTrip(owner(t, ctx, "read"), input.id, input.format);
   },
@@ -414,7 +422,7 @@ const exportTrip = act({
 const openView = act({
   name: "open_view", title: "Open Travel at a place",
   description: "Where Travel's screen opens for a path such as /, /trips/<id>, /bookings/<id>, /review or /sources, with small setup data and a revision that changes when records change. Travel's own screen calls this. Opening never starts an import.",
-  input: s.openViewInput, output: s.openViewOutput, effect: "read",
+  input: s.openViewInput, output: s.openViewOutput, effect: "read", visibility: viewOnly,
   handler(ctx, input, t) {
     return createView(t).open(t.resolve(ctx, "read"), input);
   },
@@ -432,7 +440,7 @@ const describeContext = act({
 const rememberView = act({
   name: "remember_view", title: "Remember the last trip",
   description: "Remember the trip the person last opened so Travel can reopen it. Travel's own screen calls this.",
-  input: s.rememberInput, output: s.okOutput, effect: "write",
+  input: s.rememberInput, output: s.okOutput, effect: "write", visibility: viewOnly,
   handler(ctx, input, t) {
     owner(t, ctx, "write");
     t.settings.setLastTripId(input.lastTripId);
@@ -445,7 +453,7 @@ const rememberView = act({
 const listSources = act({
   name: "list_sources", title: "List Travel's sources",
   description: "List the mail and calendar accounts Travel reads through Ri, with history range, coverage, last update, pending and failed counts, plus imported files and collections. Only a connection allowed to see all of Travel can do this.",
-  input: z.object({}).strict(), output: s.listSourcesOutput, effect: "read",
+  input: z.object({}).strict(), output: s.listSourcesOutput, effect: "read", visibility: viewOnly,
   handler(ctx, _input, t) {
     owner(t, ctx, "read");
     return createSources(t).list();
@@ -455,7 +463,7 @@ const listSources = act({
 const checkAccounts = act({
   name: "check_accounts", title: "Check Ri for accounts",
   description: "Ask Ri which mail and calendar accounts Travel may read now, and update Sources. Only a connection allowed to see all of Travel can do this.",
-  input: z.object({}).strict(), output: s.listSourcesOutput.extend({ connected: z.boolean(), message: z.string().max(500).nullable() }), effect: "write",
+  input: z.object({}).strict(), output: s.listSourcesOutput.extend({ connected: z.boolean(), message: z.string().max(500).nullable() }), effect: "write", visibility: viewOnly,
   async handler(ctx, _input, t) {
     owner(t, ctx, "write");
     const sources = createSources(t);
@@ -470,7 +478,7 @@ const checkAccounts = act({
 const setupSource = act({
   name: "setup_source", title: "Set up an account",
   description: "Choose the mail history range (30, 90 or 365 days) or the calendars to check for an account Travel reads. A wider range resumes import for the older mail only.",
-  input: s.setupSourceInput, output: s.okOutput, effect: "write",
+  input: s.setupSourceInput, output: s.okOutput, effect: "write", visibility: viewOnly,
   handler(ctx, input, t) {
     owner(t, ctx, "write");
     return t.mutate(() => createSources(t).setup(input));
@@ -480,7 +488,7 @@ const setupSource = act({
 const listCalendarsAction = act({
   name: "list_calendars", title: "List calendars",
   description: "List the calendars of a calendar account Travel reads, so the person can choose which to check for trip conflicts.",
-  input: z.object({ account: z.string().min(1).max(320) }).strict(), output: s.calendarsOutput, effect: "read",
+  input: z.object({ account: z.string().min(1).max(320) }).strict(), output: s.calendarsOutput, effect: "read", visibility: viewOnly,
   async handler(ctx, input, t) {
     owner(t, ctx, "read");
     return createSources(t).calendars(ctx, input.account);
@@ -490,7 +498,7 @@ const listCalendarsAction = act({
 const pauseSource = act({
   name: "pause_source", title: "Pause an account",
   description: "Pause or resume automatic updates for an account. Imported records stay readable.",
-  input: s.pauseSourceInput, output: s.okOutput, effect: "write",
+  input: s.pauseSourceInput, output: s.okOutput, effect: "write", visibility: viewOnly,
   handler(ctx, input, t) {
     owner(t, ctx, "write");
     return t.mutate(() => createSources(t).pause(input.account, input.paused));
@@ -500,7 +508,7 @@ const pauseSource = act({
 const deleteSourceData = act({
   name: "delete_source_data", title: "Delete imported data",
   description: "Delete what Travel imported from one account (account:<id>), from all files (imports) or from one file (import:<id>): its bookings, sources, search entries and calendar events. Notes you wrote are kept. The account is paused so nothing re-imports.",
-  input: s.deleteSourceInput, output: s.deleteSourceOutput, effect: "delete",
+  input: s.deleteSourceInput, output: s.deleteSourceOutput, effect: "delete", visibility: viewOnly,
   handler(ctx, input, t) {
     owner(t, ctx, "write");
     return t.mutate(() => createSources(t).deleteImported(input.source));
@@ -510,7 +518,7 @@ const deleteSourceData = act({
 const continueImport = act({
   name: "continue_import", title: "Continue an import",
   description: "Run the next bounded import step for one account now, with the same limits as the automatic job: one mail page with at most ten messages read, or one calendar page.",
-  input: s.continueImportInput, output: s.continueOutput, effect: "write",
+  input: s.continueImportInput, output: s.continueOutput, effect: "write", visibility: viewOnly,
   async handler(ctx, input, t) {
     owner(t, ctx, "write");
     const { sync, sources } = services(t, ctx);
@@ -525,7 +533,7 @@ const continueImport = act({
 const saveSettings = act({
   name: "save_settings", title: "Travel settings",
   description: "Set the home time zone, the names that appear on your own bookings, and whether the opted-in AI fallback (Ri's model) may read confirmations the built-in readers cannot.",
-  input: s.settingsInput, output: s.settingsOutput, effect: "write",
+  input: s.settingsInput, output: s.settingsOutput, effect: "write", visibility: viewOnly,
   handler(ctx, input, t) {
     owner(t, ctx, "write");
     return t.mutate(() => {
@@ -649,6 +657,33 @@ export const application: Application = {
     label: "accounts and collections",
     async list(ctx) {
       return createSources(await travelFor(ctx)).shareable();
+    },
+  },
+  /**
+   * Places a host can open Travel at (`open_travel`'s path, a host's link),
+   * and records its @ menu offers. Both run as the connection, so they show
+   * only what it may see.
+   */
+  records: {
+    paths: "/trips/<id> opens a trip's itinerary, /bookings/<id> opens a booking beside its trip, /ideas/<id> opens a saved idea in its trip, /review opens Review",
+    async search(ctx, query) {
+      const t = await travelFor(ctx);
+      const scope = t.resolve(ctx, "read");
+      const read = createReadModel(t);
+      const words = query.trim();
+      const trips = tripList(t, scope, { when: "all", ...(words ? { query: words } : {}) }).slice(0, words ? 10 : 20)
+        .map((trip) => ({ path: `/trips/${trip.id}`, title: trip.title, description: `Trip, ${trip.dateLabel}` }));
+      if (!words) return trips;
+      const ids = new Set(t.repo.searchBookingIds(scope, words));
+      const bookings = t.repo.bookings(scope).filter((booking) => ids.has(booking.id)).slice(0, 10).map((booking) => {
+        const record = read.bookingRecord(scope, booking);
+        return { path: `/bookings/${booking.id}`, title: record.title, description: `${record.kindLabel}, ${record.dateLabel}` };
+      });
+      return [...trips, ...bookings].slice(0, 20);
+    },
+    async read(ctx, path) {
+      const t = await travelFor(ctx);
+      return createView(t).describeRecord(t.resolve(ctx, "read"), path);
     },
   },
   connectors: {

@@ -24,17 +24,24 @@ export interface AskRiButtonProps {
   className?: string;
 }
 /**
- * Stages a question in the assistant's chat for the person to edit and send.
- * Shown only where the bridge can stage text, which the kit's view client
- * can't do yet (MCP Apps' ui/message), so today it draws nothing.
+ * Puts a question in the assistant's chat for the person to edit and send.
+ * In a host that drafts (Ri does) it's a button. In a host that can't, the
+ * question shows for the person to copy. In Travel's own page, where there's
+ * no chat, nothing shows.
  */
-export function AskRiButton({ prompt, children = "Ask Ri", variant = "secondary", size, className }: AskRiButtonProps) {
+export function AskRiButton({ prompt, children = "Ask in chat", variant = "secondary", size, className }: AskRiButtonProps) {
   const app = useOptionalRiApp();
   const announce = useAnnounce();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (!app?.ask) return null;
-  const ask = app.ask;
+  const [notice, setNotice] = useState<string | null>(null);
+  if (!app || app.askMode === "none") return null;
+  if (app.askMode === "copy")
+    return (
+      <details className="ri-ask ri-ask--copy">
+        <summary className="ri-small">{children}</summary>
+        <p className="ri-small">Copy this into the chat: <q>{prompt}</q></p>
+      </details>
+    );
   return (
     <span className="ri-ask">
       <Button
@@ -42,19 +49,16 @@ export function AskRiButton({ prompt, children = "Ask Ri", variant = "secondary"
         size={size}
         className={className}
         busy={busy}
-        busyLabel="Opening chat"
+        busyLabel="Adding to the chat"
         onClick={async () => {
-          if (!app) {
-            setError("Chat is not available here");
-            return;
-          }
           setBusy(true);
-          setError(null);
+          setNotice(null);
           try {
-            await ask(prompt);
-            announce("Question added to Ri chat. Review it, then send.", { visual: false });
+            const drafted = await app.ask(prompt);
+            if (drafted) announce("It's in the chat for you to edit and send.", { visual: false });
+            else setNotice(`The chat didn't take it. Copy it instead: ${prompt}`);
           } catch (failure) {
-            setError(errorMessage(failure, "Ri chat could not open"));
+            setNotice(errorMessage(failure, "The chat didn't take it."));
           } finally {
             setBusy(false);
           }
@@ -62,9 +66,21 @@ export function AskRiButton({ prompt, children = "Ask Ri", variant = "secondary"
       >
         {children}
       </Button>
-      {error && <InlineError>{error}</InlineError>}
+      {notice && <span className="ri-small" role="status">{notice}</span>}
     </span>
   );
+}
+
+/**
+ * A link out of Travel as a button: opened by the host (or a new tab in
+ * Travel's own page). Where the host can't open it, or refuses it, the
+ * address shows to copy.
+ */
+export function LinkOut({ open, address, children, variant = "quiet", size }: { open(): Promise<boolean>; address: string; children: ReactNode; variant?: ButtonVariant; size?: ButtonSize }) {
+  const app = useOptionalRiApp();
+  const [refused, setRefused] = useState(false);
+  if (!app?.canOpenLinks || refused) return <span className="ri-small ri-link-copy">{children}: <span className="ri-link-copy__address">{address}</span></span>;
+  return <Button variant={variant} size={size} onClick={async () => { if (!(await open().catch(() => false))) setRefused(true); }}>{children}</Button>;
 }
 
 export interface CreatedFollowUp { title: string; dueAt?: string | null; /** Saved, but Ri waits for the person to approve the task. */ waiting?: string | null }

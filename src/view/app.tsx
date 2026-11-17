@@ -12,6 +12,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
+import { OpenInBrowser, useAppClient } from "@app-builder/core/react";
 import { AppFrame, installStyles, LoadingState, Notice, SectionTabs, useRiApp } from "../ui/index.js";
 import { AddBookingDialog } from "./add.js";
 import { ReviewScreen } from "./review.js";
@@ -61,6 +62,7 @@ export function routeFromAddress(pathname: string, search: string): Route | null
 
 export function TravelApp() {
   const app = useRiApp<OpenData>();
+  const client = useAppClient();
   const data = app.data;
   const location = useLocation();
   const [adding, setAdding] = useState<{ tripId: string | null } | null>(null);
@@ -96,8 +98,10 @@ export function TravelApp() {
     void app.call("remember_view", { lastTripId: route.tripId }).catch(() => undefined);
   }, [route?.section === "trip" ? route.tripId : null, data?.owner]);
 
-  // Leaving a trip clears what the assistant was told is selected.
-  useEffect(() => () => app.select(null), [app.select]);
+  // Leaving Travel's screen clears what the assistant was told.
+  useEffect(() => () => { app.select(null); app.setSection(null); }, [app.select, app.setSection]);
+  // Leaving a trip clears its selected booking or trip.
+  useEffect(() => { if (route?.section !== "trip") app.select(null); }, [route?.section]);
 
   const nav = useMemo<Nav | null>(() => (data && route ? { route, navigate, addBooking: (tripId) => setAdding({ tripId: tripId ?? null }), setRevisions: () => undefined, data } : null), [route && pathOf(route), navigate, data]);
   if (app.error && !data) return <AppFrame><div className="ri-shell"><Notice tone="danger" title="Travel could not open.">{app.error}</Notice></div></AppFrame>;
@@ -109,7 +113,11 @@ export function TravelApp() {
   else screen = <TripsScreen />;
   return (
     <NavContext.Provider value={nav}>
-      <AppFrame>{screen}</AppFrame>
+      <AppFrame>
+        {/* Inside an assistant: the way out to Travel's own page, at the place the person is. */}
+        {client.embedded && <div className="tr-hostbar"><OpenInBrowser className="ri-button ri-button--quiet ri-button--sm" /></div>}
+        {screen}
+      </AppFrame>
       <AddBookingDialog
         open={Boolean(adding)}
         tripId={adding?.tripId ?? null}

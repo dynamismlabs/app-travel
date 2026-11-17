@@ -24,7 +24,7 @@ export type { MenuItem, MenuProps } from "./menu.js";
 export { Dialog } from "./dialog.js";
 export { Field, useField, TextInput, TextArea, Select, Checkbox, RadioGroup, DateInput, MoneyInput } from "./forms.js";
 export type { MoneyValue, SelectOption, RadioOption } from "./forms.js";
-export { AskRiButton, FollowUpDialog, ConflictNotice, ReviewCompare } from "./workflow.js";
+export { AskRiButton, LinkOut, FollowUpDialog, ConflictNotice, ReviewCompare } from "./workflow.js";
 export { SourcesScreen, sourceStatusLabel } from "./sources-screen.js";
 export type { SourcesScreenProps, SourceAccount, SourceImport, SourceStatus, HistoryDays } from "./sources-screen.js";
 export { formatDate, formatDateRange, formatInstant, relativeDay, formatMoney, parseMoneyInput, minorToDecimal, currencyDigits, isCurrencyCode, plural, initialsFor, shortDateLabel } from "./format.js";

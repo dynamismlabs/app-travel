@@ -5,13 +5,12 @@
  * Travel's own page, memory inside an assistant).
  *
  * It keeps the shape of the bridge Ri's old app kit gave these screens, so
- * the screens changed little. What the kit's client can't do is said plainly:
- * `ask`, links, maps and downloads are available only where they work.
- * - Staging text in the chat (Ask Ri): no. The kit's view client doesn't
- *   expose MCP Apps' ui/message.
- * - Opening a link or a map: in Travel's own page only. The kit's view client
- *   doesn't expose ui/open-link, and the assistant's frame can't open windows.
- * - Downloads: in Travel's own page only, for the same reason.
+ * the screens changed little. Leaving the frame goes through the kit's host
+ * calls, which check what the host allows first:
+ * - a question drafted in the chat, only where the host drafts (Ri does)
+ * - links and maps through the host's open-link, else the address to copy
+ * - files through the host's save-file, or a browser download
+ * - Open in browser, the way out of anything a host doesn't allow
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
@@ -34,26 +33,35 @@ export interface RiApp<TData = unknown> {
   call<T = unknown>(action: string, input?: Record<string, unknown>): Promise<T>;
   /** Tell the assistant which record the person selected (the kit's bounded selection). */
   select(value: { id: string; title: string } | null): void;
+  /** Tell the assistant about several selected records (at most 50 listed), or none with []. */
+  selectMany(records: { id: string; title: string }[], total?: number): void;
+  /** Tell the assistant where the person is: the place's name, its path and its filters. Open in browser opens it. */
+  setSection(place: { title: string; path?: string; filters?: Record<string, string> } | null): void;
   /** Tell the assistant what the person changed, and refresh the screen's data. */
   didChange(summary?: string): void;
-  /** Kept for the screens' old calls. The kit sends only the selection, through `select`. */
+  /** Kept for the screens' old calls. The selection and section go through `select`, `selectMany` and `setSection`. */
   context(state: unknown): void;
-  /** Staging text in the assistant's composer. Null: the kit's view client can't. */
-  ask: ((prompt: string) => Promise<void>) | null;
+  /** How a question reaches the chat: drafted for the person to send, shown to copy, or not at all (Travel's own page has no chat). */
+  askMode: "draft" | "copy" | "none";
+  /** Put a question in the chat's message box, unsent. False when the host didn't take it. */
+  ask(prompt: string): Promise<boolean>;
   openSources(): void;
-  /** Where the person manages each assistant's access: Travel's Settings. */
-  manageAccess(): void;
+  /** Where the person manages each assistant's access: Travel's Settings, in the browser when inside an assistant. */
+  manageAccess(): Promise<boolean>;
   setLocation(path: string, options?: { replace?: boolean; push?: boolean }): void;
   goBack(fallback: string): void;
   /** Counts address changes the screens didn't make themselves (Back and Forward). */
   moves: number;
-  /** Links, maps and downloads work in Travel's own page, not inside an assistant's frame. */
+  /** Whether the host opens links (always in Travel's own page). Otherwise links show their address to copy. */
   canOpenLinks: boolean;
+  /** Whether files can be saved here: Travel's own page, or a host with save-file. */
   canDownload: boolean;
-  openExternal(url: string): Promise<void>;
-  openDirections(address: string): Promise<void>;
+  /** Open a link. False when the host can't or refused, so show its address to copy. */
+  openExternal(url: string): Promise<boolean>;
+  openDirections(address: string): Promise<boolean>;
   selectFile(accept?: string): Promise<SelectedFile | null>;
-  download(file: DownloadRequest): Promise<void>;
+  /** Save a file. False when it can't be saved here. */
+  download(file: DownloadRequest): Promise<boolean>;
 }
 
 const RiAppContext = createContext<RiApp | null>(null);
@@ -147,29 +155,30 @@ export function TravelBridge({ opener, children }: TravelBridgeProps) {
     data, revision, theme, connected: true, error, embedded: client.embedded, moves,
     call: (action, input = {}) => client.call(action, input),
     select: client.select,
+    selectMany: client.selectMany,
+    setSection: client.setSection,
     didChange(summary) {
       if (summary) client.didChange(summary);
       setRevision((value) => value + 1);
     },
-    context() { /* The kit sends the selection only. */ },
-    ask: null,
+    context() { /* See select, selectMany and setSection. */ },
+    askMode: !client.embedded ? "none" : client.can.draft ? "draft" : "copy",
+    ask: (prompt) => client.draftMessage(prompt),
     openSources() { go("/sources"); },
-    manageAccess() { if (!client.embedded) window.location.assign("/settings"); },
+    async manageAccess() {
+      if (client.embedded) return client.openInBrowser("/settings");
+      window.location.assign("/settings");
+      return true;
+    },
     setLocation: go,
     goBack(fallback) {
       if (depth.current > 0) { depth.current--; navigate(-1); }
       else go(fallback, { replace: true });
     },
-    canOpenLinks: !client.embedded,
-    canDownload: !client.embedded,
-    async openExternal(url) {
-      if (client.embedded) throw new Error("Open Travel itself to follow links. An assistant's frame can't open them.");
-      window.open(assertHttpsUrl(url), "_blank", "noopener,noreferrer");
-    },
-    async openDirections(address) {
-      if (client.embedded) throw new Error("Open Travel itself to open a map. An assistant's frame can't open one.");
-      window.open(directionsUrl(address), "_blank", "noopener,noreferrer");
-    },
+    canOpenLinks: !client.embedded || client.can.openLink,
+    canDownload: client.can.download,
+    openExternal: (url) => client.openLink(assertHttpsUrl(url)),
+    openDirections: (address) => client.openLink(directionsUrl(address)),
     selectFile(accept) {
       return new Promise<SelectedFile | null>((resolve, reject) => {
         const input = document.createElement("input");
@@ -189,15 +198,9 @@ export function TravelBridge({ opener, children }: TravelBridgeProps) {
         input.click();
       });
     },
-    async download(file) {
-      if (client.embedded) throw new Error("Open Travel itself to download. An assistant's frame can't save files.");
-      const bytes = file.base64 !== undefined ? Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0)) : new TextEncoder().encode(file.text ?? "");
-      const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.name.replace(/[\\/]/g, "-").slice(0, 120);
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    download(file) {
+      const data = file.base64 !== undefined ? Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0)) : undefined;
+      return client.download({ name: file.name, mimeType: file.mimeType, ...(data ? { data } : { text: file.text ?? "" }) });
     },
   }), [data, revision, theme, error, client, moves, go, navigate]);
 

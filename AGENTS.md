@@ -1,6 +1,6 @@
 # Maintaining Travel
 
-Travel is a personal app built with App Builder (core 0.2.0, starter 0.2.0, pinned in vendor/). It was Ri's built-in Travel app; docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
+Travel is a personal app built with App Builder (core 0.2.2, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app; docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
 
 ## Layout
 
@@ -12,7 +12,7 @@ Travel is a personal app built with App Builder (core 0.2.0, starter 0.2.0, pinn
 - `src/services/`: ingestion, sync, imports, writes, follow-ups, sources, the read model and the view opener. `core.ts` builds the Travel instance for a request and resolves the caller's access from the kit's context.
 - `src/lib/`: what Ri's old app kit used to provide. `time.ts`, `mail.ts` (MIME, HTML, invitations), `sources.ts` (Gmail and Calendar sync through the hub, accounts, the message index), `data.ts` (transactions, cursors, settings, the per-account work queue, retained files, redaction).
 - `src/ui/`: the UI components, with `app.tsx`, the bridge from the screens to the kit's client and React Router. `src/view/`: Travel's screens. `src/screens.tsx`: routes and the `show_*` cards.
-- `src/fixtures/`: fictional messages and the preview seed. `fixtures/connectors.json`: what `APP_CONNECTORS=fixtures` serves.
+- `src/fixtures/`: fictional messages and the preview seed. `TRAVEL_NOW` pins today for the preview and tests. `fixtures/connectors.json`: what `APP_CONNECTORS=fixtures` serves.
 - `src/worker.ts` is a stub. Travel runs on Node only.
 
 ## Database
@@ -52,7 +52,11 @@ Each step reads at most one provider page and ten message bodies. No loops or ti
 
 ## Views
 
-Actions are data tools. `show_trip`, `show_trips` and `show_review` draw cards (`src/screens.tsx`). `open_travel` (from the kit) opens the whole app full screen. The view reaches nothing on the network. The selected booking, or the trip, reaches the assistant through `client.select`. Inside an assistant, Ask Ri, links, maps and downloads aren't offered: the kit's view client can't do them.
+Actions are data tools. `show_trip`, `show_trips` and `show_review` draw cards (`src/screens.tsx`), and a card opens the whole app at a trip, booking or Review. `open_travel` (from the kit) opens the whole app full screen, optionally at a path (`records.paths` in `src/app.ts`), and `src/main.tsx` follows the host there and to its later links. `records` also gives the host's @ menu trips and bookings.
+
+Inside an assistant the view reaches nothing on the network; everything leaves through the kit's host calls in `src/ui/app.tsx`: Ask in chat drafts a question only where the host drafts (else it shows the question to copy), links and maps open through the host (else the address shows), Export saves through the host (else "Export in browser"), and Open in browser in the header goes to the same place in Travel's own page. What the person is looking at reaches the assistant through `select` (the booking or trip), `selectMany` (ideas chosen to compare) and `setSection` (the place, its path and filters).
+
+Person-only actions are `visibility: ["app"]` (`viewOnly` in `src/app.ts`): Review decisions, deleting, imports, export, sources and settings. A host that follows MCP Apps keeps them from the model; Travel's own checks (`requireOwner`, write access) still apply. Mark nothing else view-only.
 
 ## Check a change
 

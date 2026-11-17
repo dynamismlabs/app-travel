@@ -7,7 +7,7 @@
  * follow-up, open directions outside the view and ask Ri about it.
  */
 import { useState } from "react";
-import { AskRiButton, Button, ButtonRow, Dialog, ErrorState, FollowUpDialog, InlineError, Inspector, KeyValueList, LoadingState, Menu, Notice, SourceLine, StatusLabel, useAnnounce, useMutation, useQuery, useRiApp } from "../ui/index.js";
+import { AskRiButton, LinkOut, directionsUrl, Button, ButtonRow, Dialog, ErrorState, FollowUpDialog, InlineError, Inspector, KeyValueList, LoadingState, Menu, Notice, SourceLine, StatusLabel, useAnnounce, useMutation, useQuery, useRiApp } from "../ui/index.js";
 import { formatDate } from "../lib/time.js";
 import { useNav } from "./app.js";
 import { CorrectDialog } from "./forms.js";
@@ -112,7 +112,7 @@ export function BookingInspector({ bookingId, tripTitle, onClose }: { bookingId:
             />
           )}
           <Button onClick={() => { setCreated(null); createFollowUp.reset(); setFollowOperation(uuid()); setFollowing(true); }}>Create follow-up</Button>
-          {detail.data.directionsAddress && app.canOpenLinks && <Button variant="quiet" onClick={() => void app.openDirections(detail.data!.directionsAddress!).catch((error) => setProblem(errorText(error)))}>Open directions</Button>}
+          {detail.data.directionsAddress && <LinkOut open={() => app.openDirections(detail.data!.directionsAddress!)} address={directionsUrl(detail.data.directionsAddress)}>Open directions</LinkOut>}
           {data.owner && <Button variant="quiet" className="ri-button--danger" onClick={() => setRemoving(true)}>Remove booking</Button>}
           <AskRiButton variant="primary" prompt={bookingPrompt(booking, tripTitle)}>Ask about this booking</AskRiButton>
         </>
@@ -220,7 +220,7 @@ export function SourceDialog({ source, onClose }: { source: SourceRef | null; on
   const evidence = useQuery<Evidence>("get_evidence", { id: source?.evidenceId ?? "" }, { enabled: Boolean(source) });
   return (
     <Dialog open={Boolean(source)} title={source?.title ?? "Source"} description={source ? `${source.sourceLabel}${source.receivedAt ? `, received ${formatDate(source.receivedAt.slice(0, 10), "medium")}` : ""}` : undefined} onClose={onClose} wide
-      footer={<ButtonRow>{evidence.data?.openUrl && app.canOpenLinks && <Button onClick={() => void app.openExternal(evidence.data!.openUrl!)}>Open in Gmail</Button>}<Button variant="primary" onClick={onClose}>Done</Button></ButtonRow>}>
+      footer={<ButtonRow>{evidence.data?.openUrl && <LinkOut variant="secondary" open={() => app.openExternal(evidence.data!.openUrl!)} address={evidence.data.openUrl}>Open in Gmail</LinkOut>}<Button variant="primary" onClick={onClose}>Done</Button></ButtonRow>}>
       {evidence.error ? <ErrorState message={cleanError(evidence.error)} onRetry={() => void evidence.reload()} /> : !evidence.data ? <LoadingState label="Loading source" rows={2} /> : (
         <>
           {evidence.data.note && <Notice tone={evidence.data.source.availability === "unavailable" ? "warning" : "info"}>{evidence.data.note}</Notice>}

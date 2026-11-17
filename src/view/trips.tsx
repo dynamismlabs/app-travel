@@ -1,7 +1,7 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
 /** Trips: upcoming and past trips, each with one useful attention summary. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell, AskRiButton, Button, DateInput, Dialog, EmptyState, ErrorState, InlineError, LoadingState, Notice, SectionPanel, StatusLabel, TextInput, useMutation, useQuery, useRiApp } from "../ui/index.js";
 import { MainTabs, useNav } from "./app.js";
 import type { List, Trip, Write } from "./types.js";
@@ -28,6 +28,7 @@ export function StateNotice() {
 
 export function TripsScreen() {
   const app = useRiApp();
+  useEffect(() => { app.setSection({ title: "Trips", path: "/trips" }); }, [app.setSection]);
   const { navigate, addBooking, data } = useNav();
   const trips = useQuery<List<Trip>>("list_trips", { limit: 100, when: "all" });
   const archived = useQuery<List<Trip>>("list_trips", { limit: 100, when: "archived" });
