@@ -1,6 +1,6 @@
 # Travel: parity with Ri's Travel app
 
-Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder. Ported November 12 on kit core 0.2.0; moved November 16 to core 0.2.2 (kit `main` at `1713f6a`), which added the full app in every host (shared spec §5). This lists every feature and behavior from the old README, AGENTS.md, plugin.json and tests, and whether it works here.
+Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder. Ported November 12 on kit core 0.2.0. Moved November 16 to core 0.2.2 (kit `main` at `1713f6a`), which added the full app in every host (shared spec §5). Moved November 17 to kit `main` at `ff47742` (still core 0.2.2), with the kit's fixes for the gaps the ports found ([dynamismlabs/mcp-app-builder#10](https://github.com/dynamismlabs/mcp-app-builder/pull/10)). This lists every feature and behavior from the old README, AGENTS.md, plugin.json and tests, and whether it works here.
 
 - **Works**: same behavior on the new path.
 - **Works in hosts**: works inside an assistant too, verified in the kit's strict test host (a scripts-only sandbox, no network, and Ri's rules for visibility, drafts, links, files and host links). Ri was then checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac (not a Ri Home in everyday use, which runs on another computer), on the web and, partly, in its desktop app, with dummy records only. These lines say what Ri did. ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
@@ -19,6 +19,19 @@ On core 0.2.2 the whole app also works inside an assistant, verified in the kit'
 3. **A host that ignores tool visibility** (that host's rule). Review decisions, deleting, imports and settings are view-only. A host that doesn't honor that would let its model call them. Travel's own access checks still apply. Ri honors it. ChatGPT and Claude are part of the real-host check.
 
 The other findings are things Travel works around itself that the kit or Ri should fix; they're under "What the kit and Ri should change".
+
+### What moved with kit #10 (`ff47742`)
+
+Each line is marked closed only where a Travel test or a run shows it.
+
+| Line | Was | Now |
+| --- | --- | --- |
+| Backups and restores | A backup couldn't be restored: the kit refused the booking search index's internal tables. And backups left out triggers, so a restored Travel would have lost the revision counters | Works: restored with the 39 revision triggers and the search index, and an edit after the restore moves the revision (`tests/backup.test.ts`). The installed Travel's own nightly backup from November 17, written by the older core, restored into a scratch folder with its triggers back and a clean index (run, then deleted) |
+| Several Gmail or Calendar accounts | Works differently: parsed from Ri's "Choose which account to use (a, b)" message | Works: from the accounts Ri lent (`connectors(ctx).accounts()`, Ri's `ri__list_accounts`), or the names on Ri's choice. The message parsing is gone |
+| One account must sign in again in Ri | Works differently: Travel turned Ri's `authorization_required` result into a setup state itself | Works: the core does it, with Ri's code. Travel's own mapping is gone |
+| Check whether a linked Ri task still exists | Works, by matching Ri's message | Works: by Ri's `not_found` code, which the core now keeps. The message matching is gone |
+| Error responses | tRPC sent a stack trace with file paths | Works: no stack, path or internal message reaches the browser or an assistant (`tests/mcp.test.ts`, and the switched service answered a refusal without one) |
+| Gmail history expiry and deleted messages | Matched on Ri's "provider error 404" text | Unchanged on purpose: Ri still sends these as `provider_error` until [dynamismlabs/ri#7](https://github.com/dynamismlabs/ri/pull/7) ships `not_found` |
 
 ### What moved on core 0.2.2
 
@@ -39,8 +52,8 @@ The other findings are things Travel works around itself that the kit or Ri shou
 | Kit findings 2 and 3 (app-only tools; messages, links and downloads) | Open | Closed by the kit. Finding 4 partly closed (approval IDs). Finding 9's "no starting address" closed. |
 
 **How this was checked** (all with fictional data):
-- 106 tests in 9 files: `pnpm test`, run two files at a time. The browser checks need a build and Chrome: `pnpm test:view`.
-- The core upgrade ran through the kit's `upgrade --core ~/dynamism/app-builder --json`. Travel isn't installed as a service, so it only type-checked and tested. Its tests stopped it once: the fictional November trips had turned past on the real date, and the kit's approval timing had changed. Both are fixed in Travel, and the upgrade commit was then taken as it was.
+- 115 tests in 10 files: `pnpm test`, run two files at a time. The browser checks need a build and Chrome: `pnpm test:view`.
+- The core upgrades ran through the kit's `upgrade --core ~/dynamism/app-builder --json`. On November 16 Travel wasn't installed yet, so it only type-checked and tested, and its tests stopped it once (the fictional November trips had turned past, and the kit's approval timing had changed). Both are fixed in Travel. On November 17, to kit `ff47742`, it ran the full safe-change on the installed `local.travel`: install, typecheck, tests, build, rehearsal on a copy of the data, snapshot, switch and merge all passed, with no test to fix.
 - On core 0.2.0, `serve --install --service process` passed every step and an outside MCP SDK client did the full OAuth flow against the installed service. Not repeated on 0.2.2; the in-process OAuth test passes on it.
 - The view ran in Chrome inside the kit's strict test host (`tests/support/view-host.ts`, the kit's `browser-host.ts`), matching the kit's own host tests. Travel's own page was checked at phone and desktop widths.
 - Hub features were tested against the kit's own fixture source and job runner, and against a fake of Ri's hub with Ri's tool names.
@@ -110,7 +123,7 @@ The other findings are things Travel works around itself that the kit or Ri shou
 | Gmail: search for confirmations from airlines, hotels, rail, car rental and booking platforms, by subject terms | Works | Same query, sent to Ri's `gmail__search_messages`. |
 | Gmail: new mail checked against its headers before a body is read | Works | |
 | Gmail: history sync, deletions, moves to Trash and back | Works | Ri's `gmail__list_history` through the hub. |
-| Gmail: history expiry rescans the window, never the whole mailbox | Works | Ri reports an expired history only as text ("provider error 404"). Travel reads the status from the message. |
+| Gmail: history expiry rescans the window, never the whole mailbox | Works | Ri reports an expired history as `provider_error`, with the status only in its text ("provider error 404"). Travel reads the status from the message until [dynamismlabs/ri#7](https://github.com/dynamismlabs/ri/pull/7) ships `not_found`, which the core would pass on as the error's code. |
 | Gmail through Ri's hub instead of Ri's per-invocation capabilities | Works differently | Travel calls Ri's tools by name through the kit's connector client (`connectors(ctx).call`), with its own OAuth token for the hub. The kit's mail adapter returns only plain text, and Travel needs Gmail's MIME parts for attachments, invitations and HTML. |
 | Booking attachments: a PDF read through Ri's `extract_text` when the body has no details | Works | Ri's `gmail__get_attachment` and `ri__extract_text`. |
 | Calendar invitations in mail: zones, and a suggested booking | Works | |
@@ -119,7 +132,7 @@ The other findings are things Travel works around itself that the kit or Ri shou
 | File: PDF (through Ri's `extract_text`), text, HTML and saved email, up to 512 KB, previewed first, original kept | Works | |
 | Paste any confirmation text, previewed first | Works | |
 | Manual form: flights, trains, stays, car rentals, activities | Works | |
-| Several Gmail or Calendar accounts | Works differently | Ri's grant decides which accounts. The kit's connector client can't list them. With one account, Travel reads its address (`gmail__get_profile`, or the primary calendar's id). With several, it reads the names from Ri's "Choose which account to use (a, b)" message. See finding 5. |
+| Several Gmail or Calendar accounts | Works | Ri's grant decides which accounts. Travel reads them from the core's `connectors(ctx).accounts()`, which uses Ri's `ri__list_accounts` ([dynamismlabs/ri#4](https://github.com/dynamismlabs/ri/pull/4)) and otherwise the names Ri puts on its tools. With several, each is named as the tools take it, without reading any mailbox. With one, Travel still reads its address (`gmail__get_profile`, or the primary calendar's id), as before, so an installed Travel's accounts keep their records whatever Ri calls them. A hub that can't list them asks Travel to choose, and the core passes the names it gives. Tested on the kit's fixture source (Ri's list, and Ri's choice) and on the fake hub. |
 | Per-account "automatic updates" set in Ri | Works differently | Ri's hub grant has no automatic flag: a granted account works the same from a button, a job or a chat (shared spec, Decision 3). Every account Ri grants updates on Travel's job. The person pauses an account in Travel. Ri's "Found in this account: … Check it before turning on automatic updates" notice no longer appears, since accounts start updating on their own. |
 | Microsoft accounts, live fares, flight status, maps, weather, booking or cancelling, shared editing, passports | Not part of Travel | Same as in Ri. |
 
@@ -181,7 +194,7 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 | The person declines the task in Ri | Works | New on core 0.2.2: the follow-up fails with "You declined this task in Ri", and the job never asks again on its own. |
 | Retries and second clicks return the same task | Works | Same operation id. |
 | Not allowed: asks for permission and keeps the same operation | Works | "Allow 'Add tasks' for Travel in Ri." |
-| Check whether a linked task still exists | Works | `ri__get_task`. The kit's client drops Ri's `not_found` code, so Travel reads Ri's message (finding 7). |
+| Check whether a linked task still exists | Works | `ri__get_task`. Ri's `not_found` reaches Travel as the core's `ConnectorError` with that code, so a deleted task shows as missing whatever Ri's message says. Tested on the kit's fixture source. |
 
 ## Data access
 
@@ -198,7 +211,7 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 | The scheduled job reads only its own automatic accounts and reads no records | Works differently | Jobs run as the installation's owner, which the kit decides. The hub limits them to the accounts Ri granted. They read records to match and place bookings. |
 | Owner-only: source management, scope creation, review decisions, deletion | Works in hosts: verified in the test host, and in Ri on the web: the model's path refused `delete_booking` ("This tool is not available to this caller."), and the view's file import (`preview_import`, `apply_import`) and export went through. ChatGPT and Claude pending. | These are view-only (`visibility: ["app"]`): the host keeps them out of the model's tool list and refuses the model's call, while Travel's screen still calls them. Checked: the model's call to `review_change` is refused, and "Use 16:00" works from the view. They also still need "the owner": the person's own browser, or a connection allowed to see everything, so a limited connection's view shows Review read-only. **Blocked in a host that ignores visibility (that host's rule):** its model could call them, within Travel's own checks. Ri honors visibility. |
 | A retried write returns its first result only while the caller's access is unchanged | Works differently | No invocation receipts. Creates replay by `newId` and are shown under the caller's current access, so a narrower caller never sees what it can't. |
-| Deleting an account's data removes it from every chat scope that shared it | Works differently | Connection choices belong to the kit, and Travel can't edit them. Deleting the data pauses the account. A connection that chose that account sees it again only if the person resumes and it re-imports. Needs a kit hook to forget a source in connection choices, if this matters. |
+| Deleting an account's data removes it from every chat scope that shared it | Works differently | Connection choices belong to the kit. Deleting the data pauses the account. A connection that chose that account sees it again only if the person resumes and it re-imports. Since kit #10 the core drops a source from every connection's choice once the app's `sources.list` stops returning it, and never lets it back in. Travel still lists a paused account, so this doesn't apply yet. Hiding an account whose data was deleted from `sources.list` would give Ri's behavior. Not done here. |
 | Revoked scopes refuse further calls | Works | The kit: disconnecting in Settings, or an expired token, gets 401. |
 
 ## Limits and bounded work
@@ -213,7 +226,7 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 | Interrupted step resumes from its committed checkpoint | Works | Records and checkpoint commit in one transaction, as in Ri. |
 | Ri unreachable: retry later, keeping the checkpoint | Works | The job run is "retrying" in the kit's runner. Tested on the kit's fixture source. |
 | Travel's hub connection revoked: setup state, records kept | Works | The run fails with "Ri needs you to connect this app again." Settings says so. |
-| One account must sign in again in Ri: that account shows "Reconnect this account in Ri" | Works differently | Ri answers with `authorization_required` as a normal result, which the kit passes through as success. Travel treats it as a setup state itself (finding 6). |
+| One account must sign in again in Ri: that account shows "Reconnect this account in Ri" | Works | Ri answers with `authorization_required` as a normal result. Since kit #10 the core turns it, `additional_permission_required` and `choose_connection_method` into a setup state with Ri's code, so Travel no longer maps them. Tested on the kit's fixture source with Ri's own answer. |
 | Travel not connected to Ri at all | Works | Everything except mail, calendar, PDFs, the model and Ri tasks works. Sources says to connect in Settings. |
 | Files up to 512 KB, text kept up to 64,000 characters, previews expire after an hour | Works | |
 
@@ -222,7 +235,8 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 | Ri | Here | Status |
 | --- | --- | --- |
 | Runtime: Ri started the app on demand over its private IPC | The kit's Node server, run as the person's service (`serve --install`) | Works differently |
-| Kit updates | The kit's `upgrade --core` | Works: core 0.2.0 to 0.2.2 through the safe-change checks. |
+| Kit updates | The kit's `upgrade --core` | Works: core 0.2.0 to 0.2.2 through the safe-change checks, then kit `ff47742` through the full safe-change on the installed service. |
+| Backups and restores | The kit's `backup` and `restore` | Works since kit #10: Travel's revision triggers and booking search index come back, also from a backup an older core made (Travel's migrations put the triggers back). Tested, and the installed Travel's nightly backup was restored into a scratch folder. |
 | Records in `records.db` in Ri's instance folder (`node:sqlite`) | The kit's `data.sqlite`, with Travel's tables in kit migration `app-0001` | Works differently. Same data model. Ri's three migrations are one, since no old data exists. Ri's third migration only rewrote first-release review reasons, so it isn't carried and its test is dropped. |
 | Synchronous transactions for every write | Travel's own synchronous connection to the kit's `data.sqlite` | **Works, but Node only.** Blocked on Cloudflare (kit gap, finding 1). Still needed on core 0.2.2. |
 | Content-addressed evidence files in a blobs folder | A `travel_blobs` table in the same database | Works differently: files commit with the records that cite them, and travel with backups and change snapshots. |
@@ -267,34 +281,38 @@ Ordered by impact. None was worked around in the kit or Ri; each is handled insi
 2. **App-only tools (kit, then Ri): closed.** Core 0.2.2 has `visibility: ["app"]`, and Ri's host enforces it. Travel uses it.
 3. **Messages, links and downloads from a view (kit, then Ri): closed in the kit.** Core 0.2.2 has `draftMessage`, `openLink`, `download`, `openInBrowser`, `setSection` and `selectMany`. Travel uses them all. Ri's host drafts, opens links and, since [dynamismlabs/ri#2](https://github.com/dynamismlabs/ri/pull/2), saves files.
 4. **Approvals (Ri): partly closed.** Ri's approvals now carry IDs, an approved call stays open 24 hours, and a declined call is refused; core 0.2.2 follows them. Whether Ri still asks before an app adds a task to the person's own Ri wasn't checked here (Ri wasn't run). Travel handles either.
-5. **Which accounts an app may use (kit and Ri), still open.** The hub names the granted accounts only in a tool's `account` description, or in a `choose_account` answer. The kit's client returns tool names only, and turns `choose_account` into a message string. Travel parses "Choose which account to use (a, b)". **Kit:** expose the accounts, for example `connectors(ctx).accounts(capability)` or structured data on `SetupRequired`. **Ri:** could also list the granted accounts.
-6. **Status answers passed as success (kit), still open.** Ri's hub answers `authorization_required`, `additional_permission_required` and `choose_connection_method` without `isError`. The kit maps `approval_required`, `choose_account` and now `denied`, so the others still reach the app as results. Travel maps them to setup states itself.
-7. **Error codes dropped (kit and Ri), still open.** Ri's model-safe outcome leaves out the provider's HTTP status, so a deleted message or an expired sync token is only "provider error 404 for GET …" in text. The kit's client keeps only `denied` from Ri's `code` (not `not_found` from `ri__get_task`). Travel matches on text. **Ri:** include `not_found` or `gone`. **Kit:** keep `code` on the error it throws.
-8. **The kit's fixture source is narrow, still open.** It serves the mail and calendar capabilities and fixed results by tool name. It can't stand in for Ri's history, full messages, attachments or sync tokens. Its mail search understands plain words only, so a Gmail query with `{a b}` groups matches nothing. Travel tests Ri's fuller tools with its own fake hub, and the capability path with the kit's fixture source.
+5. **Which accounts an app may use (kit and Ri): closed.** Kit #10 added `connectors(ctx).accounts()` and `accounts` on Ri's `choose_account` answer, and Ri lists the accounts it lent with `ri__list_accounts` ([dynamismlabs/ri#4](https://github.com/dynamismlabs/ri/pull/4), merged). Travel uses both and no longer parses Ri's message. Small: the core doesn't export the `ConnectorAccount` type, so Travel derives it from `connectors()`.
+6. **Status answers passed as success (kit): closed.** Kit #10 turns `authorization_required`, `additional_permission_required` and `choose_connection_method` into `SetupRequired` with Ri's code. Travel's own mapping is gone.
+7. **Error codes dropped (kit and Ri): closed in the kit, open in Ri.** Kit #10 keeps Ri's `code` (`ConnectorError`), so a deleted Ri task is `not_found`, and Travel uses it. Ri still sends a provider's 404 or 410 (a deleted message, an expired history or sync token) as `provider_error` with the status only in its text, so Travel still reads "provider error 404 for GET …" until [dynamismlabs/ri#7](https://github.com/dynamismlabs/ri/pull/7) ships `not_found` with `httpStatus`.
+8. **The kit's fixture source is narrow: partly closed.** Since kit #10 it answers with Ri's errors, its status answers and an account list, which Travel's new tests use. It still can't stand in for Ri's history, full messages, attachments or sync tokens, and its mail search understands plain words only, so a Gmail query with `{a b}` groups matches nothing. Travel tests Ri's fuller tools with its own fake hub.
 9. **Smaller kit notes.**
-   - Still open: the Node server isn't built with `NODE_ENV=production`, so tRPC error responses include stack traces with file paths.
+   - Closed for callers: error responses carry no stack, file path or internal message, over tRPC and MCP (`tests/mcp.test.ts`, and the switched service at `127.0.0.1:4313` answered a refusal without a stack). Still open: the installed `local.travel` runs without `NODE_ENV=production`, because its launchd definition was written by the older core and `upgrade` and `change` don't rewrite it. `serve --uninstall` then `serve --install` would. Not done here.
    - Closed: views can now be handed a starting address (`open_<app>`'s path, host links).
    - Travel's tool list is 36 tools and 187 KB, and its view resource is about 1 MB. Ri's per-chat tool loading keeps the list out of chats until needed.
    - A `show_*` card's `data` is validated against its full output schema. Travel reuses its detailed trip schema, so cards are large but exact.
-   - Still open: `create` defaults every app to port 4310. Travel uses 4334.
-10. **Fictional dates (Travel's own).** The preview's trips are in November 2026, so they turn past. `TRAVEL_NOW` pins "today" for the preview and tests.
+   - Fixed in the kit, not shown for Travel: `create` now picks a free port per app, and `serve --install` refuses a port another installed app uses. The kit's tests show it. Travel already had its own port (4334 in `app.config.ts`, installed on 4313), and installing again wasn't in scope.
+   - Still open: the kit's strict MCP Apps test host isn't exported from the core, so Travel keeps a copy (`tests/support/view-host.ts`).
+10. **Backups (kit): closed.** Not one of Travel's findings at first, but Travel had both problems kit #10 fixed: its booking search is a full-text index, which no backup could restore, and its revision counters are triggers, which backups left out. Restores now keep both. `tests/backup.test.ts` restores a new backup and one in the older format, and an edit afterwards moves the revision. The installed Travel's nightly backup, written by the older core, restored into a scratch folder with its 39 triggers and a clean index.
+11. **Fictional dates (Travel's own).** The preview's trips are in November 2026, so they turn past. `TRAVEL_NOW` pins "today" for the preview and tests.
 
 ## Tests
 
-| Old suite (92 tests) | New suite (106 tests) | Notes |
+| Old suite (92 tests) | New suite (115 tests) | Notes |
 | --- | --- | --- |
 | domain (19) | domain (19) | Unchanged |
 | parse (14) | parse (14) | Unchanged |
 | workflow (20) | workflow (22) | The invocation-retry assertion became "a retry returns the first result as already applied". New permission copy. Added: waiting for approval, then the job's identical call. The preview test seeds with `seedPreview` instead of Ri's fixture principal. |
-| sync (17) | sync (18) | Accounts come from the fake hub's grant, with Ri's tool names. Account labels are the names Ri shows. Every granted account is automatic. Reconnect and removal go through `check_accounts`. Fair rotation runs through the `sync_sources` job. Added: not connected to Ri. |
+| sync (17) | sync (19) | Accounts come from the fake hub's grant, with Ri's tool names. Account labels are the names Ri shows. Every granted account is automatic. Reconnect and removal go through `check_accounts`. Fair rotation runs through the `sync_sources` job. Added: not connected to Ri, and several accounts named by Ri's list or, on a Ri without it, by Ri's choice. |
 | scope (15) | access (11) | Scopes became connections with chosen sources. "Revoked scope" and "no scope" moved to the kit's OAuth (`mcp.test.ts`) and an empty source list. "Job limited to its accounts" is now the hub's grant. "Access view" is now the consent screen's sources. The three replay tests became one retried-create test. The stored-reasons migration test is dropped (no old data). |
-| contract (5) | contract (6) | Checks the kit's contract and MCP tools instead of Ri's package format. Added: exactly which tools are view-only, and `open_travel`'s paths. |
+| contract (5) | contract (7) | Checks the kit's contract and MCP tools instead of Ri's package format. Added: exactly which tools are view-only, and `open_travel`'s paths. |
 | view (2, Ri's packaged view in Chrome) | browser (8) | In the kit's strict host: the model's tool list and refused call, the @ menu and record reading, cards opening the app at a booking and at Review, `open_travel` at a booking, the place and selection reaching the assistant, a draft in the chat, directions and Open in browser through the host, Export saved through the host, a host link, and the same view in a host without drafts, links or files and in one that refuses links. Travel's own page at narrow and wide widths, and adding a pasted booking on an empty install. |
-| none | MCP with OAuth (3) | The real server, with the MCP SDK's OAuth client and sources chosen on consent. |
-| none | kit fixture source (5) | Import through the kit's capabilities on the kit's runner, PDF through `ri__extract_text`, approval wait across the runner, a declined approval, Ri down and connection revoked. |
+| none | MCP with OAuth (4) | The real server, with the MCP SDK's OAuth client and sources chosen on consent. Added: no stack, path or internal message reaches a caller, over MCP or the browser's tRPC, when Travel's database fails. |
+| none | kit fixture source (9) | Import through the kit's capabilities on the kit's runner, PDF through `ri__extract_text`, approval wait across the runner, a declined approval, Ri down and connection revoked. Added with kit #10: accounts from Ri's list, accounts from Ri's choice, an account Ri says must sign in again, and a deleted Ri task. |
+| none | backups (2) | The kit's backup and restore keep the revision triggers and booking search, from a new backup and from one in the older format, and an edit after the restore moves the revision. |
 
 ## Not checked here
 
 - Travel connected to Ri's real hub: its consent screen, a real Gmail account, real approvals. Ri wasn't run, as asked. The hub client was exercised with the kit's fixture source and a fake of Ri's hub built from Ri's code (branch `claude/single-path-ri-hub`).
 - ChatGPT and Claude drawing Travel's view, and a Ri Home in everyday use. Ri was checked in a disposable Ri at f55cdf96 ([Real hosts](#real-hosts)). Ri's desktop app was checked for the other three apps, not for Travel.
-- `serve --install` on core 0.2.2 and a real launchd service: done on November 16 (below).
+- `serve --install` on core 0.2.2 and a real launchd service: done on November 16 (below). On November 17 the upgrade switched that service to kit `ff47742`. It wasn't reinstalled, so its launchd definition still lacks `NODE_ENV=production` (finding 9).
+- Travel against a Ri with `ri__list_accounts` (ri#4) and real Gmail accounts. The account list is tested on the kit's fixture source and the fake hub.
