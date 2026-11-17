@@ -26,6 +26,7 @@ const merged = transaction(ctx, (tx) => {
   - Work that returns a promise is refused, and its writes are rolled back.
   - A `tx` used after its transaction ended (after an `await`, or kept for later) refuses to run.
 - **Reads see the transaction's own writes,** and nothing else runs on the connection until the transaction ends. Concurrent requests take turns. Another process waits for the write lock.
+- **It's cheap:** about a microsecond more than the statements it runs (`pnpm test:perf` in the kit), so a statement can have a transaction of its own. Statements are prepared once and reused.
 - **A `transaction()` inside another joins it, with no savepoint.** Its writes commit or roll back with the outer one, even if the outer one catches its error. A function can call `transaction()` whether or not its caller already has one open.
 - **Never open your own better-sqlite3 connection** to the installation's `data.sqlite`. Its path, pragmas and locking belong to the core, and a second writer on the same file works against the first.
 - **Node only for now.** Cloudflare's D1 can't read inside a transaction. Declare `platforms: ["node"]` in app.config.ts.
@@ -58,6 +59,9 @@ A browser extension or a web page can connect like any assistant. It registers i
 ### Add-only connections
 
 A connection can be limited to adding, like a key that saves a link but can't list them. Mark each action that only adds with `adds: true`, with effect "write" and the "agent" audience. The consent screen then offers "Only add: <the actions' titles>". The core refuses that connection everything else: other actions, render tools, `open_<app>`, the @ menu and record reads. Its `ctx.connection` has `write: false` and `addOnly: true`; `canRead(ctx)` is false. Settings shows "Can only add". The source choice still applies, as where it may add.
+
+- **A client that only adds can ask for it:** it includes the scope `add_only` in its authorization request, such as `scope=openid profile offline_access add_only`. The consent screen then starts on "Only add" and says the client asked for it; the person can still allow more. The scope isn't listed in `scopes_supported`, because an MCP client may ask for every scope listed there.
+- **An add-only connection's `tools/list` shows only the app's add actions,** described exactly as everyone else sees them. A call to any other tool still gets the refusal that says why.
 
 An add action's result must say nothing about records already there, or an add-only connection could read through it. Return what it was given, or counts:
 

@@ -76,7 +76,7 @@ The switch waits for the new build about three times as long as it took to answe
 
 - `pnpm exec app-builder status` says whether the service is running, which release and core it runs, its address and MCP address, the last change and the last error. Add `--json` for the exact shape (docs/safe-change.md).
 - `restart`, `start` and `stop` control the service; `logs --lines 200`, `logs --since 1h` and `logs --follow` show its log, and `logs --change` the last install, change or upgrade.
-- `pnpm exec app-builder upgrade` moves the app onto a newer kit core (security fixes arrive this way). Commit first. It prepares the upgrade on a branch in a separate copy and switches only when the app's checks pass, like any change. The new core's own `change` makes the switch. An app on kit `df533b0` or earlier switches with its older core, so run `change` once after that upgrade.
+- `pnpm exec app-builder upgrade` moves the app onto a newer kit core (security fixes arrive this way). Commit first. It prepares the upgrade on a branch in a separate copy and switches only when the app's checks pass, like any change. The new core's own `change` makes the switch. An app on kit `df533b0` or earlier switches with its older core, so run `change` once after that upgrade. Once it has merged the upgrade into the app's folder, it runs `pnpm install --frozen-lockfile` there, so the folder's own `pnpm exec app-builder` is the new core's. If it says it couldn't, or you merged the upgrade branch yourself, run that before any other command.
 
 ## Recovery
 
