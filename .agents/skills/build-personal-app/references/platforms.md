@@ -66,6 +66,8 @@ Sharing collections does not share mailbox or calendar authority. A removed memb
 
 Personal NDJSON exports contain only app-declared personal data and authorized photo bytes. Installation backups contain accounts and password hashes; treat them as secrets. They omit sessions, OAuth clients/tokens/consents and upstream provider tokens, including the encrypted credential-store rows. Restore into an empty destination, regenerate the runtime secret, and sign in and reconnect assistants. Stop the old writer before moving; choose one destination for future writes. A restore is not continuous synchronization.
 
+Backups keep full-text indexes (FTS5), views and triggers. A virtual table's rows go back in through it, which rebuilds the index, and triggers are made after the rows, so they don't fire on restored records. Only the tables SQLite itself says an index made are left out, so an app's own table is kept whatever it's called. A contentless index (`content=''`) can't be read back; it's restored empty for the app to rebuild. Cloudflare's export refuses a database with a virtual table, so `backup --cloudflare` refuses such an app; use the nightly backup in its backups bucket.
+
 ## Server rendering
 
 Both runtimes render through React Router framework mode. Load initial data with loadAppPage using request-scoped platform and read actions. Do not return database handles, secrets, tokens or vault values. The web page is private/no-store; the service worker only precaches offline.html. The MCP view remains a standalone browser bundle. Development uses the Node API and Vite middleware on one loopback origin.

@@ -23,6 +23,8 @@ The complete command reference, with exit codes and the `--json` lines, is docs/
    On a Mac the service is a launchd agent (`local.<app id>`): it starts at login and restarts if it stops. On Linux it's a systemd user unit.
 3. The app prints, and Settings shows, its address, `http://127.0.0.1:<port>`. The MCP address is that plus `/mcp`.
 
+Each app has its own port, in `port` in app.config.ts. `create` picks a free one that no installed app uses (in 4310–4809; `pnpm dev` also uses the port 1000 above). `serve --install` refuses a port another app installed on this computer already answers on, and says which app: set `PORT` for the install, or change `port` in app.config.ts and commit it. Keep an installed app's port: Ri and other assistants connect to its address.
+
 Data stays in `~/.local/share/<app id>` (or `APP_DATA_DIR`), outside the folder. Only the service writes it. Never start a second server on it, and never run the app from the folder you're editing: `pnpm dev` with a disposable `APP_DATA_DIR` is for development.
 
 ## Connect it to Ri, and to other assistants
