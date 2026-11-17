@@ -85,10 +85,26 @@ Times are in the installation's time zone. On the Node service that's the comput
 | Not connected, access revoked, tool not granted, an account to reconnect or to choose in Ri | `SetupRequired` | Fails with a message saying what to do. The checkpoint stays, and Settings shows the hub as needing reconnection. Its `code` is Ri's answer, such as `authorization_required`, `additional_permission_required` or `choose_account`; for `choose_account`, `accounts` lists the names `account` takes. |
 | A write that reaches outside needs approval in Ri | `ApprovalPending` | Waits on Ri's approval ID, also across restarts. It re-checks that the tool is still granted, then retries the identical call: every 5 minutes for the first hour, then every 30. Once approved, Ri accepts that call within 24 hours. A week without an answer fails. |
 | The person declined that call in Ri | `ApprovalDenied` | Fails with the person's answer. The same call isn't made again until a new run, and Ri refuses it for 24 hours. |
-| Ri answered with another error, such as a message or task that no longer exists | `ConnectorError` | Fails with Ri's message, unless your code catches it. Its `code` is Ri's (`not_found`, `unsupported`, `provider_error`…) and `tool` the tool called. |
+| Ri answered with another error, such as a message or task that no longer exists | `ConnectorError` | Fails with Ri's message, unless your code catches it. Its `code` is Ri's (`not_found`, `unsupported`, `provider_error`…), `tool` the tool called, and `httpStatus` the provider's status when Ri sends one. |
 | Anything else | | Fails with the error's message. The checkpoint stays. |
 
 Throw `SourceUnavailable` or `SetupRequired` from your own code when a source you call yourself behaves that way. Branch on an error's `code`, never on its message's wording.
+
+**Something gone at the provider.** When Gmail or Google Calendar answers 404 or 410, Ri sends `code: "not_found"` with the status as `httpStatus`, and it always arrives as a `ConnectorError`, whatever the provider's message says. Catch it to drop the item or start over:
+
+```ts
+try { return await connectors(ctx).call("google_calendar__list_events", { syncToken }); }
+catch (error) {
+  if (error instanceof ConnectorError && error.code === "not_found") {
+    // 410: the sync token expired, so do a full sync. 404: the item was deleted, so drop it.
+    if (error.httpStatus === 410) return fullSync(ctx);
+    return null;
+  }
+  throw error;
+}
+```
+
+Don't match "404" or "not found" in the message: it's the provider's wording. A Ri hub from before this change sends these as `code: "provider_error"`, so until it's updated, keep any older handling for that code.
 
 **Which accounts Ri lent.** `await connectors(ctx).accounts()` lists them: each with `name` (what a tool's `account` argument takes), the `tools` it backs, and, from a hub that lists its accounts, a stable `id` and `provider`. When Ri lends one account for a tool, its tools don't name it, so that account comes back with `name: null`; call without `account`. Pass `account` only with a name from this list. Key your own records by `id` when there is one: it stays the same across Gmail and Calendar and when the person renames the account, and changes only if the app is connected to a different Ri address.
 
@@ -107,7 +123,7 @@ Write fixtures/connectors.json in the capability shapes:
 }
 ```
 
-With `APP_CONNECTORS=fixtures` (and optionally `APP_CONNECTOR_FIXTURES=<file>`), the app serves connector calls from this file, using the hub's tool names. `change` and `serve --install` always check with fixtures. In tests, build the platform with `connectors: fixtureSource(data)`, and drive the runner with `runDueJobs(app, platform, { now: () => … })` to check a run, a duplicate wake-up, a failing source and a restart. Setting `"unavailable": true` or `"revoked": true` in the fixtures exercises the retry and setup states. A tool can answer with Ri's error (`"tools": { "ri__get_task": { "error": { "code": "not_found" } } }`) or one of its answers (`{ "result": { "status": "authorization_required", "provider": "google" } }`), and `"accounts": [{ "id": "a1", "name": "me@example.com", "tools": ["gmail__search_messages"] }]` is what `accounts()` returns.
+With `APP_CONNECTORS=fixtures` (and optionally `APP_CONNECTOR_FIXTURES=<file>`), the app serves connector calls from this file, using the hub's tool names. `change` and `serve --install` always check with fixtures. In tests, build the platform with `connectors: fixtureSource(data)`, and drive the runner with `runDueJobs(app, platform, { now: () => … })` to check a run, a duplicate wake-up, a failing source and a restart. Setting `"unavailable": true` or `"revoked": true` in the fixtures exercises the retry and setup states. A tool can answer with Ri's error (`"tools": { "ri__get_task": { "error": { "code": "not_found" } } }`, with `"httpStatus": 410` to stand for a provider's status) or one of its answers (`{ "result": { "status": "authorization_required", "provider": "google" } }`), and `"accounts": [{ "id": "a1", "name": "me@example.com", "tools": ["gmail__search_messages"] }]` is what `accounts()` returns.
 
 ## 5. Rules
 

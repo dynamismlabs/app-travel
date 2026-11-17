@@ -21,6 +21,8 @@ The complete command reference, with exit codes and the `--json` lines, is docs/
    - installs and starts the service, and checks `/api/health`
 
    On a Mac the service is a launchd agent (`local.<app id>`): it starts at login and restarts if it stops. On Linux it's a systemd user unit.
+
+   The service runs the Node that ran the install. With Homebrew's Node it records `/opt/homebrew/bin/node`, which stays across Homebrew's updates. With nvm (or another version manager without a lasting path) it records that version's own path, and the install's message says so: removing that version stops the app. To move the app to another Node, run `serve --uninstall` (data and builds are kept), then `serve --install` from that Node. After a major Node update, do the same, because the build's native dependencies are built for one Node.
 3. The app prints, and Settings shows, its address, `http://127.0.0.1:<port>`. The MCP address is that plus `/mcp`.
 
 Each app has its own port, in `port` in app.config.ts. `create` picks a free one that no installed app uses (in 4310–4809; `pnpm dev` also uses the port 1000 above). `serve --install` refuses a port another app installed on this computer already answers on, and says which app: set `PORT` for the install, or change `port` in app.config.ts and commit it. Keep an installed app's port: Ri and other assistants connect to its address.
