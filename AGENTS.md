@@ -1,11 +1,12 @@
 # Maintaining Travel
 
-Travel is a personal app built with App Builder (core 0.2.2, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app; docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
+Travel is a personal app built with App Builder (core 0.2.2 from kit `73c5266`, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app; docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
 
 ## Layout
 
-- `app.config.ts`: id `travel` (keep it), name, port 4334.
-- `src/app.ts`: every action, the `show_*` views, the sources a connection can be limited to, the hub `connectors` and the two jobs. Importing it opens nothing.
+- `app.config.ts`: id `travel` (keep it), name, port 4334, and `instructions`, what an assistant needs across the tools (below).
+- `src/app.ts`: every action, the `show_*` views, the prompts, the sources a connection can be limited to, the hub `connectors` and the two jobs. Importing it opens nothing.
+- `src/prompts.ts`: `trip-check`, the skill Ri's Travel bundled, as an MCP prompt.
 - `src/actions/schemas.ts`: strict input and output schemas (zod/v3, as the kit expects). `src/actions/examples.ts`: fictional examples the contract test validates.
 - `src/domain/`: pure. Time (`clock.ts`), places and zones, effective bookings with corrections, itinerary, coverage and gaps, matching, and deterministic extraction (`parse/`).
 - `src/db/`: `migrations.ts` (kit migrations, append only), `repo.ts` (row access), `connection.ts` (the app's database through the core's `transaction()`, below).
@@ -64,6 +65,10 @@ Actions are data tools. `show_trip`, `show_trips` and `show_review` draw cards (
 Inside an assistant the view reaches nothing on the network; everything leaves through the kit's host calls in `src/ui/app.tsx`: Ask in chat drafts a question only where the host drafts (else it shows the question to copy), links and maps open through the host (else the address shows), Export saves through the host (else "Export in browser"), and Open in browser in the header goes to the same place in Travel's own page. Settings, beside it and on Sources, opens the kit's Settings inside the view (connections, the Ri link and automations) through the core's view-only `read_settings` and `change_settings`. Name no action of Travel's either of those. What the person is looking at reaches the assistant through `select` (the booking or trip), `selectMany` (ideas chosen to compare) and `setSection` (the place, its path and filters).
 
 Person-only actions are `visibility: ["app"]` (`viewOnly` in `src/app.ts`): Review decisions, deleting, imports, export, sources and settings. A host that follows MCP Apps keeps them from the model; Travel's own checks (`requireOwner`, write access) still apply. Mark nothing else view-only.
+
+## What assistants are told
+
+`instructions` in app.config.ts goes to every assistant when it connects, and hosts may add it to the model's context: records only, local times with their zones, "No booking recorded", look before adding by hand, and what stays in Travel's own screen. Keep it to what holds across tools, never a tool's own description, and under 2,000 characters (the core refuses more). The `trip-check` prompt (`src/prompts.ts`) is a request the person picks in the assistant. It names the tools and reads nothing itself, so it can't show more than the connection may see. Change nothing in a prompt's `messages`. The contract test checks that every tool either names exists.
 
 ## Check a change
 
