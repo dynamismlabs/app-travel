@@ -114,26 +114,39 @@ describe("the kit's fixture source", () => {
 
   it("reads a provider's 404 or 410 from the code and status Ri sends, as the kit's client passes them on", async () => {
     const data = fixtures();
-    data.tools!.gmail__read_message = { error: { code: "not_found", message: "The provider couldn't find that.", httpStatus: 404 } };
-    data.tools!.google_calendar__sync_events = { error: { code: "not_found", message: "That's no longer available at the provider.", httpStatus: 410 } };
-    data.tools!.ri__get_task = { error: { code: "not_found", message: "That task doesn't exist." } };
+    // Answers by arguments: only the deleted message, the expired sync token and the deleted task fail.
+    data.tools!.gmail__read_message = { cases: [
+      { args: { messageId: "fx-deleted" }, error: { code: "not_found", message: "The provider couldn't find that.", httpStatus: 404 } },
+      { args: { messageId: "fx-flight-lisbon" }, result: { id: "fx-flight-lisbon" } },
+    ] };
+    data.tools!.google_calendar__sync_events = { cases: [
+      { args: { syncToken: "sync-expired" }, error: { code: "not_found", message: "That's no longer available at the provider.", httpStatus: 410 } },
+      { args: { syncToken: "sync-1" }, result: { events: [], nextSyncToken: "sync-2" } },
+    ] };
+    data.tools!.ri__get_task = { ...data.tools!.ri__get_task, cases: [{ args: { id: "task-deleted" }, error: { code: "not_found", message: "That task doesn't exist." } }] };
     const h = await harness({ hub: fixtureSource(data) });
     const hub = hubFor({ platform: h.platform } as Context);
-    const failure = (tool: string) => hub.call(tool, {}).then(() => null, (error: unknown) => error);
+    const failure = (tool: string, args: Record<string, unknown>) => hub.call(tool, args).then(() => null, (error: unknown) => error);
     try {
-      expect(providerStatus(await failure("gmail__read_message"))).toBe(404);
-      expect(providerStatus(await failure("google_calendar__sync_events"))).toBe(410);
-      // A Ri record that no longer exists has no provider status, and is still not_found.
-      const task = await failure("ri__get_task");
+      expect(providerStatus(await failure("gmail__read_message", { messageId: "fx-deleted" }))).toBe(404);
+      expect(await hub.call("gmail__read_message", { messageId: "fx-flight-lisbon" })).toEqual({ id: "fx-flight-lisbon" });
+      expect(providerStatus(await failure("google_calendar__sync_events", { syncToken: "sync-expired" }))).toBe(410);
+      expect(await hub.call("google_calendar__sync_events", { syncToken: "sync-1" })).toEqual({ events: [], nextSyncToken: "sync-2" });
+      // A Ri record that no longer exists has no provider status, and is still not_found. Others still answer.
+      const task = await failure("ri__get_task", { id: "task-deleted" });
       expect(providerStatus(task)).toBeNull();
       expect(failureKind(task)).toBe("not_found");
+      expect(await hub.call("ri__get_task", { id: "fx-task-1" })).toEqual({ id: "fx-task-1", title: "Fictional task" });
+      // A call no case answers fails, naming its arguments, rather than borrowing another's answer.
+      expect(String(await failure("gmail__read_message", { messageId: "fx-unknown" }))).toContain('"messageId":"fx-unknown"');
     } finally { await hub.close(); }
   });
 
   it("marks a linked Ri task missing when Ri answers not_found", async () => {
     const data = fixtures();
     data.tools!.ri__create_task = { result: { id: "task-1", title: "Book the airport transfer" } };
-    data.tools!.ri__get_task = { error: { code: "not_found", message: "That task doesn't exist." } };
+    // Only the task this follow-up created is gone.
+    data.tools!.ri__get_task = { ...data.tools!.ri__get_task, cases: [{ args: { id: "task-1" }, error: { code: "not_found", message: "That task doesn't exist." } }] };
     const h = await harness({ hub: fixtureSource(data) });
     const trip = await h.call("save_trip", { title: "Lisbon", startDate: "2026-11-09", endDate: "2026-11-14" });
     const created = await h.call("create_follow_up", { subject: { type: "trip", id: trip.record.id }, title: "Book the airport transfer" });
