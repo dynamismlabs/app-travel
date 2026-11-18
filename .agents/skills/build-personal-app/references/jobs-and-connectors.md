@@ -13,7 +13,7 @@ connectors: {
 },
 ```
 
-Settings then shows a "Your accounts through Ri" section with this purpose and a Connect button. Connecting opens Ri's consent screen, where the person chooses which accounts and tools the app gets. Ri enforces that grant, not the app. The token is kept encrypted in the installation's credential slot, so jobs can use it while nobody is signed in. Portable backups omit it.
+Settings then shows a "Your accounts through Ri" section with a Connect button. It says, in plain words, what the app asks Ri for, from `capabilities` and `tools`, then this purpose: "Reading Log asks Ri to read your mail and add tasks to Ri, to add the books your book club emails about." Mail and calendar tools fold into "read your mail" or "send or change mail", and the like. Ri's own services read as Ri's consent screen names them, and an unknown tool as its provider and name in words, never `gmail__read_message`. Connecting opens Ri's consent screen, where the person chooses which accounts and tools the app gets. Ri enforces that grant, not the app. The token is kept encrypted in the installation's credential slot, so jobs can use it while nobody is signed in. Portable backups omit it.
 
 The hub's address can be preset with `APP_HUB_URL` (for example `http://127.0.0.1:<Ri's port>/api/integrations/mcp`), which `serve --install` records in the service's config.env.
 
@@ -124,6 +124,23 @@ Write fixtures/connectors.json in the capability shapes:
 ```
 
 With `APP_CONNECTORS=fixtures` (and optionally `APP_CONNECTOR_FIXTURES=<file>`), the app serves connector calls from this file, using the hub's tool names. `change` and `serve --install` always check with fixtures. In tests, build the platform with `connectors: fixtureSource(data)`, and drive the runner with `runDueJobs(app, platform, { now: () => … })` to check a run, a duplicate wake-up, a failing source and a restart. Setting `"unavailable": true` or `"revoked": true` in the fixtures exercises the retry and setup states. A tool can answer with Ri's error (`"tools": { "ri__get_task": { "error": { "code": "not_found" } } }`, with `"httpStatus": 410` to stand for a provider's status) or one of its answers (`{ "result": { "status": "authorization_required", "provider": "google" } }`), and `"accounts": [{ "id": "a1", "name": "me@example.com", "tools": ["gmail__search_messages"] }]` is what `accounts()` returns.
+
+A tool called through `call()` can answer by its arguments, so a sync that asks for one message, one page of history or one sync token gets the right answer:
+
+```json
+"tools": {
+  "gmail__read_message": {
+    "cases": [{ "args": { "messageId": "m1" }, "result": { "id": "m1", "headers": { "List-Id": "<club.books.example>" } } }],
+    "error": { "code": "not_found", "httpStatus": 404 }
+  },
+  "google_calendar__sync_events": { "cases": [
+    { "args": { "syncToken": "t1" }, "result": { "events": [], "nextSyncToken": "t2" } },
+    { "args": { "syncToken": "expired" }, "error": { "code": "not_found", "httpStatus": 410 } }
+  ] }
+}
+```
+
+The first case whose `args` all equal the call's answers. Values compare deeply, so `"7"` isn't `7`, and arguments a case doesn't name may be anything. When no case matches, the tool's own `result`, `error` or `approval` answers. A tool with none fails the call, naming the arguments, so a missing case shows up in the test. In code, `answer: (args) => ({ result: … })` computes the answer instead, for example history that expires below some id.
 
 ## 5. Rules
 

@@ -34,7 +34,7 @@ Data stays in `~/.local/share/<app id>` (or `APP_DATA_DIR`), outside the folder.
 **Ri connects to the app like any MCP server.** Add the app's MCP address to a workspace. Each workspace is its own connection (its own OAuth client). The app's consent screen asks what that workspace may see, and whether it may also make changes. In an app with add actions (`adds: true`), it can also be limited to only adding.
 - In local-owner mode, the consent screen needs no sign-in.
 - The app also answers on `localhost` and `[::1]` at the same port.
-- Settings lists every connection with its access ("Can read and make changes", "Can read only", "Can only add") and can disconnect it.
+- Settings lists every connection with its access ("Can read and make changes", "Can read only", "Can only add") and can disconnect it. A client can disconnect itself too, by revoking its refresh token at the app's `revocation_endpoint` (RFC 7009).
 
 **Claude, ChatGPT and any other MCP client** connect the same way. A desktop host that can only start commands uses `pnpm exec app-builder mcp http://127.0.0.1:<port>/mcp`, which opens the consent screen once and keeps its token privately. A browser extension or a web page connects the same way too, as a public client with PKCE (see [platform gotchas](platforms.md#clients-in-a-browser)).
 
