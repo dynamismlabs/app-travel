@@ -4,12 +4,19 @@
  * two). This checks what Travel promises in them.
  */
 import { describe, expect, it } from "vitest";
-import { actionContract } from "@app-builder/core";
+import { actionContract, type Context } from "@app-builder/core";
 import { application } from "../src/app.js";
+import { appConfig } from "../app.config";
+import { tripCheck } from "../src/prompts.js";
 import * as s from "../src/actions/schemas.js";
 import * as ex from "../src/actions/examples.js";
 
 const contract = actionContract({ ...application, viewHTML: "<html></html>" });
+/** The trip check's text for these arguments, as an assistant receives it. */
+const tripText = async () => {
+  const messages = await tripCheck.messages({} as Context, {});
+  return typeof messages === "string" ? messages : messages.map((message) => message.text).join("\n");
+};
 const tools = contract.mcp.tools as { name: string; description: string; _meta?: Record<string, unknown>; annotations: Record<string, boolean> }[];
 
 describe("contract", () => {
@@ -63,11 +70,25 @@ describe("contract", () => {
     expect(declaring).toEqual([]);
   });
 
-  it("uses copy without long dashes or semicolons in descriptions", () => {
-    for (const item of [...tools, ...contract.actions]) {
-      expect(item.description).not.toMatch(/[—–]/);
-      expect(item.description).not.toContain(";");
+  it("uses copy without long dashes or semicolons in descriptions, prompts and instructions", async () => {
+    const copy = [...[...tools, ...contract.actions, ...contract.mcp.prompts].map((item) => item.description), appConfig.instructions!, await tripText()];
+    for (const text of copy) {
+      expect(text).not.toMatch(/[—–]/);
+      expect(text).not.toContain(";");
     }
+  });
+
+  it("offers Ri's trip check as a prompt, and tells assistants what holds across the tools", async () => {
+    // No arguments until the kit's build accepts them (src/prompts.ts). The person names the trip in the chat.
+    expect(contract.mcp.prompts).toEqual([{ name: "trip-check", title: "Check a trip", description: tripCheck.description }]);
+    const text = await tripText();
+    expect(text).toContain("the one I name, or else my next upcoming trip");
+    expect(text).toContain("coverage.gaps");
+    // Every tool the prompt and the instructions name is one Travel offers.
+    const mentioned = new Set([text, appConfig.instructions!].flatMap((text) => text.match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? []));
+    expect([...mentioned].sort()).toEqual(["create_follow_up", "get_trip", "list_bookings", "list_trips"]);
+    for (const name of mentioned) expect(tools.map((tool) => tool.name)).toContain(name);
+    expect(appConfig.instructions!.length).toBeLessThanOrEqual(2000);
   });
 
   it("keeps the fictional examples valid against the schemas", () => {

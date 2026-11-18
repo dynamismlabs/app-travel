@@ -27,6 +27,7 @@ import { createSources, requireOwner } from "./services/sources.js";
 import { createSync, type StepSummary } from "./services/sync.js";
 import { createView, scopedRevision } from "./services/view.js";
 import { createWrites } from "./services/writes.js";
+import { prompts } from "./prompts.js";
 
 // ─── Plumbing ───────────────────────────────────────────────────────────────
 
@@ -656,6 +657,8 @@ export const application: Application = {
     openView, describeContext, rememberView, listSources, checkAccounts, setupSource, listCalendarsAction, pauseSource, deleteSourceData, continueImport, saveSettings, syncSources,
   ],
   views: [showTrip, showTrips, showReview],
+  /** The skill Ri's Travel bundled, as a prompt assistants offer the person (prompts.ts). */
+  prompts,
   /**
    * What a connection can be limited to on the consent screen: each account
    * Travel reads through Ri, the trips and bookings entered by hand, and

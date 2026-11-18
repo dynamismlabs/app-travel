@@ -15,6 +15,7 @@ import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client
 import type { OAuthClientInformationFull, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { serveApp, type RunningApp } from "@app-builder/core/node";
 import { application } from "../src/app.js";
+import { appConfig } from "../app.config";
 import { seedPreview } from "../src/fixtures/preview.js";
 import { travelFor } from "../src/services/core.js";
 
@@ -126,6 +127,12 @@ describe("MCP with OAuth", () => {
     // Kept to tell Ri how large Travel's tool list is (docs/parity.md).
     console.log(`tools/list: ${tools.length} tools, ${Math.round(size / 1024)} KB`);
     expect(tools.find((tool) => tool.name === "open_travel")?._meta).toMatchObject({ "openai/ui": { entrypoints: [{ type: "global" }] } });
+    // What holds across the tools comes with the connection, and Ri's trip check is a prompt the person can pick.
+    expect(client.getInstructions()).toBe(appConfig.instructions);
+    expect((await client.listPrompts()).prompts.map((prompt) => prompt.name)).toEqual(["trip-check"]);
+    const prompt = await client.getPrompt({ name: "trip-check" });
+    expect(prompt.messages).toHaveLength(1);
+    expect(prompt.messages[0]).toMatchObject({ role: "user", content: { type: "text", text: expect.stringContaining("Check a trip in Travel for what is missing or conflicting") } });
     await client.close();
   });
 
