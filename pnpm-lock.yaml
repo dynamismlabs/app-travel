@@ -88,7 +88,7 @@ importers:
 packages:
 
   '@app-builder/core@file:vendor/app-builder-core-0.2.2.tgz':
-    resolution: {integrity: sha512-3yGkS9jsli+3P34Q+OtlMRkkByfMokFZux5DNycVLSiTs8eFjG+cUGQR+s8PHPXoYPymPTkP3O+/DazLv0aIgA==, tarball: file:vendor/app-builder-core-0.2.2.tgz}
+    resolution: {integrity: sha512-KK2+Q44wfeOLybiimQGJCKm1jcJMTNcoBGbc/UavUWZIfLKarfaV35eGTC3d6FXoJh2hjYhX+pNcSnvfu7OjTA==, tarball: file:vendor/app-builder-core-0.2.2.tgz}
     version: 0.2.2
     hasBin: true
 
