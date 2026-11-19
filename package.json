@@ -16,7 +16,7 @@
     "test:view": "pnpm build && vitest run tests/view.browser.test.ts"
   },
   "dependencies": {
-    "@app-builder/core": "file:vendor/app-builder-core-0.2.2.tgz",
+    "@app-builder/core": "file:vendor/app-builder-core-0.2.3.tgz",
     "@trpc/server": "11.17.0",
     "better-sqlite3": "12.11.1",
     "drizzle-orm": "0.45.2",
@@ -50,7 +50,7 @@
   "appBuilder": {
     "starterVersion": "0.2.0",
     "example": "tracker",
-    "coreVersion": "0.2.2"
+    "coreVersion": "0.2.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

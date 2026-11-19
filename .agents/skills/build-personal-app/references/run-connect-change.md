@@ -33,6 +33,7 @@ Data stays in `~/.local/share/<app id>` (or `APP_DATA_DIR`), outside the folder.
 
 **Ri connects to the app like any MCP server.** Add the app's MCP address to a workspace. Each workspace is its own connection (its own OAuth client). The app's consent screen asks what that workspace may see, and whether it may also make changes. In an app with add actions (`adds: true`), it can also be limited to only adding.
 - In local-owner mode, the consent screen needs no sign-in.
+- When Ri installed the app on its own computer, Ri asks these questions in its own UI and grants the answer with the app's host key (`host-key` in the data directory), so connecting works when Ri is used from a laptop or phone. The app needs nothing for this. The key is Ri's: never read, copy or commit it, or use it to connect anything yourself.
 - The app also answers on `localhost` and `[::1]` at the same port.
 - Settings lists every connection with its access ("Can read and make changes", "Can read only", "Can only add") and can disconnect it. A client can disconnect itself too, by revoking its refresh token at the app's `revocation_endpoint` (RFC 7009).
 
