@@ -1,6 +1,6 @@
 # Travel: parity with Ri's Travel app
 
-Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder. Ported November 12 on kit core 0.2.0. Moved November 16 to core 0.2.2 (kit `main` at `1713f6a`), which added the full app in every host (shared spec §5). Moved November 17 to kit `main` at `ff47742` (still core 0.2.2), with the kit's fixes for the gaps the ports found ([dynamismlabs/mcp-app-builder#10](https://github.com/dynamismlabs/mcp-app-builder/pull/10)). Tagged `v0.1.0`. For `v0.1.1`, moved to kit `main` at `a8e9b5d` (kit #11 to #13, still core 0.2.2), after Ri sent a provider's 404 or 410 with its code and status ([dynamismlabs/ri#7](https://github.com/dynamismlabs/ri/pull/7)). For `v0.1.2`, moved to kit `main` at `023f92f` (kit #14 to #17, still core 0.2.2): Travel's transactions run on the core's `transaction()`, and Settings opens inside an assistant's view. `v0.1.3` is kit `main` at `7b1ba65` (kit #18 and the add-only follow-up, still core 0.2.2). For `v0.1.4`, moved to kit `main` at `73c5266` (kit #20 to #25, still core 0.2.2): assistants get Travel's `instructions` when they connect, and Ri's trip check is an MCP prompt. For `v0.1.5`, moved to kit `main` at `e44b499` (kit #26, still core 0.2.2): the core reads an app's own copy of zod, so the trip check takes the trip as an argument, and the running service answers a bad input with a 400 that names its first problem. This lists every feature and behavior from the old README, AGENTS.md, plugin.json and tests, and whether it works here.
+Ri's Travel app (`apps/travel` at Ri commit `3c442810`) ported onto App Builder. Ported November 12 on kit core 0.2.0. Moved November 16 to core 0.2.2 (kit `main` at `1713f6a`), which added the full app in every host (shared spec §5). Moved November 17 to kit `main` at `ff47742` (still core 0.2.2), with the kit's fixes for the gaps the ports found ([dynamismlabs/mcp-app-builder#10](https://github.com/dynamismlabs/mcp-app-builder/pull/10)). Tagged `v0.1.0`. For `v0.1.1`, moved to kit `main` at `a8e9b5d` (kit #11 to #13, still core 0.2.2), after Ri sent a provider's 404 or 410 with its code and status ([dynamismlabs/ri#7](https://github.com/dynamismlabs/ri/pull/7)). For `v0.1.2`, moved to kit `main` at `023f92f` (kit #14 to #17, still core 0.2.2): Travel's transactions run on the core's `transaction()`, and Settings opens inside an assistant's view. `v0.1.3` is kit `main` at `7b1ba65` (kit #18 and the add-only follow-up, still core 0.2.2). For `v0.1.4`, moved to kit `main` at `73c5266` (kit #20 to #25, still core 0.2.2): assistants get Travel's `instructions` when they connect, and Ri's trip check is an MCP prompt. For `v0.1.5`, moved to kit `main` at `e44b499` (kit #26, still core 0.2.2): the core reads an app's own copy of zod, so the trip check takes the trip as an argument, and the running service answers a bad input with a 400 that names its first problem. For `v0.1.6`, moved to core 0.2.3 (kit `main` at `b38d373`, kit #27): Ri, as the host that installed Travel on its computer, can allow itself in Travel without a browser, so "Allow Ri in Travel" works from any device. This lists every feature and behavior from the old README, AGENTS.md, plugin.json and tests, and whether it works here.
 
 - **Works**: same behavior on the new path.
 - **Works in hosts**: works inside an assistant too, verified in the kit's strict test host (a scripts-only sandbox, no network, and Ri's rules for visibility, drafts, links, files and host links). Ri was then checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac (not a Ri Home in everyday use, which runs on another computer), on the web and, partly, in its desktop app, with dummy records only. These lines say what Ri did. ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
@@ -19,6 +19,13 @@ On core 0.2.2 the whole app also works inside an assistant, verified in the kit'
 3. **A host that ignores tool visibility** (that host's rule). Review decisions, deleting, imports and settings are view-only. A host that doesn't honor that would let its model call them. Travel's own access checks still apply. Ri honors it. ChatGPT and Claude are part of the real-host check.
 
 The other findings are things Travel works around itself that the kit or Ri should fix; they're under "What the kit and Ri should change".
+
+### What moved for v0.1.6 (kit #27, core 0.2.3)
+
+| Line | Was | Now |
+| --- | --- | --- |
+| Allowing Ri in Travel from another device (kit #27, the host grant) | "Allow Ri in Travel" opened Travel's consent screen at the Ri Home's `127.0.0.1`, which a laptop or phone can't load | Works on the installed service, with no change in Travel. The data folder has `host-key` (mode 600, kept across upgrades and changes), and `status --json` reports `hostKeyPath`. With the key, `GET /api/host/access-choices` answers Travel's two choices, "Read and make changes" (recommended) and "Read only", each covering all accounts and collections. Travel marks no action `adds`, so there's no add-only choice. No key, a wrong key, an Origin header or a forwarding header is refused. Approve wasn't called on the installed service, since it would add a connection. On a scratch copy with the fictional trips, in-process, an approve for "Read only" and the PKCE exchange gave a connection that lists the three trips and is refused `save_trip`, and no session was left behind. An add-only approve is refused. Ri's side (Ri #26) wasn't run here |
+| The upgrade | Kit `e44b499`, core 0.2.2 | `upgrade` to core 0.2.3 committed `280ed22` and switched `local.travel` from `790c71a`. The 0.2.2 tarball is gone from `vendor/`. Nothing in Travel needed changing. Locally 126 tests pass in 11 files, browser included |
 
 ### What moved for v0.1.5 (kit #26)
 
@@ -117,7 +124,7 @@ Each line is marked closed only where a Travel test or a run shows it.
 | Review: reservations without a trip, changes and cancellations, duplicates, extracted details | Works | |
 | Review compares recorded and proposed values with the source before anything changes | Works | "Use 16:00" checked in Chrome. |
 | Sources: accounts, imported files, history range, coverage, last update, pending and failed counts, pause, continue import, delete imported data | Works differently | Accounts are the ones Ri's hub lets Travel read. Sources asks Ri when it opens, and has "Check Ri for accounts". |
-| Sources: chats with access | Works differently, and in hosts: verified in the test host | Each assistant connection and its access is in the kit's Settings, at `/settings`. Choices are made on Travel's consent screen when a place connects. Sources points there. Inside an assistant, Settings opens in the view itself, and the view's header has it too. |
+| Sources: chats with access | Works differently, and in hosts: verified in the test host | Each assistant connection and its access is in the kit's Settings, at `/settings`. Choices are made on Travel's consent screen when a place connects, or, since v0.1.6, in Ri's own screen when Ri installed Travel on its computer (the host grant, which covers all sources). Sources points there. Inside an assistant, Settings opens in the view itself, and the view's header has it too. |
 | Sources: Travel settings (home zone, your names, AI fallback) | Works | |
 | Calendars to check, per calendar account | Works | |
 | Add booking: paste, file, or the manual form | Works | Paste-and-apply on an empty install checked in Chrome. |
@@ -246,7 +253,7 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 | Behavior | Status | Notes |
 | --- | --- | --- |
 | The owner's view sees everything | Works | The person's own browser, and the app's jobs. |
-| A chat sees only the accounts and collections shared with it (`account:<id>`, `manual`, `imports`) | Works differently | Per connection, chosen on Travel's consent screen when a place connects (a Ri workspace, Claude, ChatGPT), and enforced on every call. The sources offered are the same keys. Verified over real OAuth. |
+| A chat sees only the accounts and collections shared with it (`account:<id>`, `manual`, `imports`) | Works differently | Per connection, chosen on Travel's consent screen when a place connects (a Ri workspace, Claude, ChatGPT), and enforced on every call. Since v0.1.6 the Ri that installed Travel can instead choose read or read and change in its own screen, for all sources. The sources offered are the same keys. Verified over real OAuth. |
 | Read-only versus write access | Works | The kit refuses writes for a read-only connection with its own message. |
 | A booking is visible only when all its contributing sources are shared | Works | |
 | A trip from an unshared source shows only through the shared bookings in it, without its title or notes | Works | |
@@ -280,7 +287,7 @@ Every old action is a kit action. Unless noted, each is an MCP tool and also cal
 | Ri | Here | Status |
 | --- | --- | --- |
 | Runtime: Ri started the app on demand over its private IPC | The kit's Node server, run as the person's service (`serve --install`) | Works differently |
-| Kit updates | The kit's `upgrade --core` | Works: core 0.2.0 to 0.2.2 through the safe-change checks, then kit `ff47742` through the full safe-change on the installed service. Kit `df533b0` rolled back at the switch (launchd never started the new release). Kit `a8e9b5d` (#13) fixed that and switched cleanly. Kit `023f92f` stopped at Travel's contract test, then switched once it was updated. Kits `7b1ba65` and `73c5266` switched with no test to fix. |
+| Kit updates | The kit's `upgrade --core` | Works: core 0.2.0 to 0.2.2 through the safe-change checks, then kit `ff47742` through the full safe-change on the installed service. Kit `df533b0` rolled back at the switch (launchd never started the new release). Kit `a8e9b5d` (#13) fixed that and switched cleanly. Kit `023f92f` stopped at Travel's contract test, then switched once it was updated. Kits `7b1ba65` and `73c5266` switched with no test to fix. Kit `e44b499` switched with no test to fix, and so did core 0.2.3 (`b38d373`). |
 | Backups and restores | The kit's `backup` and `restore` | Works since kit #10: Travel's revision triggers and booking search index come back, also from a backup an older core made (Travel's migrations put the triggers back). Tested, and the installed Travel's nightly backup was restored into a scratch folder. |
 | Records in `records.db` in Ri's instance folder (`node:sqlite`) | The kit's `data.sqlite`, with Travel's tables in kit migration `app-0001` | Works differently. Same data model. Ri's three migrations are one, since no old data exists. Ri's third migration only rewrote first-release review reasons, so it isn't carried and its test is dropped. |
 | Synchronous transactions for every write | The core's `transaction(ctx, work)` on the kit's own connection (since v0.1.2, before that Travel's own connection) | **Works, but Node only.** Blocked on Cloudflare until the kit can run it there (finding 1). |
@@ -320,7 +327,7 @@ Found in Ri and fixed in Travel: Ri refuses a whole server whose tool takes an i
 
 ## What the kit and Ri should change
 
-Ordered by impact. None was worked around in the kit or Ri. Each is handled inside Travel or listed above as blocked. Status as of kit `e44b499`.
+Ordered by impact. None was worked around in the kit or Ri. Each is handled inside Travel or listed above as blocked. Status as of kit `b38d373` (core 0.2.3).
 
 1. **Transactions (kit): closed on Node, open on Cloudflare.** Travel's writes read, decide and write together: match a confirmation, then create, merge or send to Review, with history and the import checkpoint, all or nothing. Rewriting them as D1 batches would change the logic, not just the plumbing.
    - Until v0.1.1 Travel opened a second, synchronous better-sqlite3 connection to the kit's own `data.sqlite`.
@@ -364,6 +371,7 @@ Ordered by impact. None was worked around in the kit or Ri. Each is handled insi
 ## Not checked here
 
 - Travel connected to Ri's real hub: its consent screen, a real Gmail account, real approvals. Ri wasn't run, as asked. The hub client was exercised with the kit's fixture source and a fake of Ri's hub built from Ri's code (branch `claude/single-path-ri-hub`).
+- Ri allowing itself in Travel through the host grant (Ri #26), from another device. Ri wasn't run. The installed service answers the access choices, and an approve ran on a scratch copy.
 - ChatGPT and Claude drawing Travel's view, and a Ri Home in everyday use. Ri was checked in a disposable Ri at f55cdf96 ([Real hosts](#real-hosts)). Ri's desktop app was checked for the other three apps, not for Travel.
 - `serve --install` on core 0.2.2 and a real launchd service: done on November 16 (below). Since then the service has been switched by `upgrade` and `change`. Since kit #12 those rewrite its definition, which now has `NODE_ENV=production` (finding 9).
 - Travel against a Ri with `ri__list_accounts` (ri#4) and real Gmail accounts. The account list is tested on the kit's fixture source and the fake hub.

@@ -1,6 +1,6 @@
 # Maintaining Travel
 
-Travel is a personal app built with App Builder (core 0.2.2 from kit `e44b499`, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app, and docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
+Travel is a personal app built with App Builder (core 0.2.3 from kit `b38d373`, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app, and docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
 
 ## Layout
 
@@ -73,3 +73,5 @@ Person-only actions are `visibility: ["app"]` (`viewOnly` in `src/app.ts`): Revi
 ## Check a change
 
 `pnpm typecheck`, `pnpm test`, `pnpm build`, then `pnpm test:view` for the browser checks. Use a disposable `APP_DATA_DIR`, never the person's data. Commit, then `pnpm exec app-builder change` (or `serve --install` the first time). Use `--service process` while developing; never install a launchd service from a development session.
+
+The data folder's `host-key` (`hostKeyPath` in `status --json`, mode 600) lets the Ri that installed Travel on this computer allow itself without a browser (core 0.2.3). It's a secret: never print, commit or send it. Don't call `/api/host/approve` against the person's install, since each call adds a connection. Try it on a disposable data folder.
