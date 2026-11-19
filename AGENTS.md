@@ -1,12 +1,12 @@
 # Maintaining Travel
 
-Travel is a personal app built with App Builder (core 0.2.2 from kit `73c5266`, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app; docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
+Travel is a personal app built with App Builder (core 0.2.2 from kit `e44b499`, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app, and docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
 
 ## Layout
 
 - `app.config.ts`: id `travel` (keep it), name, port 4334, and `instructions`, what an assistant needs across the tools (below).
 - `src/app.ts`: every action, the `show_*` views, the prompts, the sources a connection can be limited to, the hub `connectors` and the two jobs. Importing it opens nothing.
-- `src/prompts.ts`: `trip-check`, the skill Ri's Travel bundled, as an MCP prompt.
+- `src/prompts.ts`: `trip-check`, the skill Ri's Travel bundled, as an MCP prompt with an optional `trip`.
 - `src/actions/schemas.ts`: strict input and output schemas (zod/v3, as the kit expects). `src/actions/examples.ts`: fictional examples the contract test validates.
 - `src/domain/`: pure. Time (`clock.ts`), places and zones, effective bookings with corrections, itinerary, coverage and gaps, matching, and deterministic extraction (`parse/`).
 - `src/db/`: `migrations.ts` (kit migrations, append only), `repo.ts` (row access), `connection.ts` (the app's database through the core's `transaction()`, below).
@@ -68,7 +68,7 @@ Person-only actions are `visibility: ["app"]` (`viewOnly` in `src/app.ts`): Revi
 
 ## What assistants are told
 
-`instructions` in app.config.ts goes to every assistant when it connects, and hosts may add it to the model's context: records only, local times with their zones, "No booking recorded", look before adding by hand, and what stays in Travel's own screen. Keep it to what holds across tools, never a tool's own description, and under 2,000 characters (the core refuses more). The `trip-check` prompt (`src/prompts.ts`) is a request the person picks in the assistant. It names the tools and reads nothing itself, so it can't show more than the connection may see. Change nothing in a prompt's `messages`. The contract test checks that every tool either names exists.
+`instructions` in app.config.ts goes to every assistant when it connects, and hosts may add it to the model's context: records only, local times with their zones, "No booking recorded", look before adding by hand, and what stays in Travel's own screen. Keep it to what holds across tools, never a tool's own description, and under 2,000 characters (the core refuses more). The `trip-check` prompt (`src/prompts.ts`) is a request the person picks in the assistant. It names the tools and reads nothing itself, so it can't show more than the connection may see. Its optional `trip` is the person's words for `list_trips`' search, quoted, and limited to that search's 200 characters. Without it the text is the same as before the argument. Change nothing in a prompt's `messages`. The contract test checks that every tool either names exists.
 
 ## Check a change
 

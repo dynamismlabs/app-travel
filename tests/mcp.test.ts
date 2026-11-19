@@ -129,10 +129,15 @@ describe("MCP with OAuth", () => {
     expect(tools.find((tool) => tool.name === "open_travel")?._meta).toMatchObject({ "openai/ui": { entrypoints: [{ type: "global" }] } });
     // What holds across the tools comes with the connection, and Ri's trip check is a prompt the person can pick.
     expect(client.getInstructions()).toBe(appConfig.instructions);
-    expect((await client.listPrompts()).prompts.map((prompt) => prompt.name)).toEqual(["trip-check"]);
+    const listed = (await client.listPrompts()).prompts;
+    expect(listed.map((prompt) => prompt.name)).toEqual(["trip-check"]);
+    expect(listed[0].arguments).toEqual([expect.objectContaining({ name: "trip", required: false })]);
     const prompt = await client.getPrompt({ name: "trip-check" });
     expect(prompt.messages).toHaveLength(1);
     expect(prompt.messages[0]).toMatchObject({ role: "user", content: { type: "text", text: expect.stringContaining("Check a trip in Travel for what is missing or conflicting") } });
+    const named = await client.getPrompt({ name: "trip-check", arguments: { trip: "Lisbon" } });
+    expect(named.messages[0]).toMatchObject({ role: "user", content: { type: "text", text: expect.stringContaining('Check my trip "Lisbon" in Travel') } });
+    await expect(client.getPrompt({ name: "trip-check", arguments: { trip: "x".repeat(201) } })).rejects.toThrow();
     await client.close();
   });
 
