@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@app-builder/core':
-        specifier: file:vendor/app-builder-core-0.2.4.tgz
-        version: file:vendor/app-builder-core-0.2.4.tgz(@cloudflare/workers-types@5.20261104.1)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@types/node@24.10.1)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(jiti@2.7.0)(kysely@0.28.20)(react-dom@19.2.3(react@19.2.3))(typescript@5.7.3)(vitest@4.1.5(@types/node@24.10.1)(vite@8.0.8(@types/node@24.10.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)))
+        specifier: file:vendor/app-builder-core-0.2.11.tgz
+        version: file:vendor/app-builder-core-0.2.11.tgz(@cloudflare/workers-types@5.20261104.1)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@types/node@24.10.1)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(jiti@2.7.0)(kysely@0.28.20)(react-dom@19.2.3(react@19.2.3))(typescript@5.7.3)(vitest@4.1.5(@types/node@24.10.1)(vite@8.0.8(@types/node@24.10.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)))
       '@trpc/server':
         specifier: 11.17.0
         version: 11.17.0(typescript@5.7.3)
@@ -87,9 +87,9 @@ importers:
 
 packages:
 
-  '@app-builder/core@file:vendor/app-builder-core-0.2.4.tgz':
-    resolution: {integrity: sha512-MvxSUVpsebLiAlXe1T80QV0IayeKLO0D3hWMZIwVbJHstAadtxq5R+wxLjLNUP577S5WYoNxOUvYMt03liNKzg==, tarball: file:vendor/app-builder-core-0.2.4.tgz}
-    version: 0.2.4
+  '@app-builder/core@file:vendor/app-builder-core-0.2.11.tgz':
+    resolution: {integrity: sha512-/L8/q/Tc90D/M7tzrRfGHjUUGZx6yqrmsCBK06IOafWBxgPu/DFDLlSN6lRIqVH7xDPbjIpDwKd/2B8sOGQM0g==, tarball: file:vendor/app-builder-core-0.2.11.tgz}
+    version: 0.2.11
     hasBin: true
 
   '@babel/code-frame@7.29.7':
@@ -2974,7 +2974,7 @@ packages:
 
 snapshots:
 
-  '@app-builder/core@file:vendor/app-builder-core-0.2.4.tgz(@cloudflare/workers-types@5.20261104.1)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@types/node@24.10.1)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(jiti@2.7.0)(kysely@0.28.20)(react-dom@19.2.3(react@19.2.3))(typescript@5.7.3)(vitest@4.1.5(@types/node@24.10.1)(vite@8.0.8(@types/node@24.10.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)))':
+  '@app-builder/core@file:vendor/app-builder-core-0.2.11.tgz(@cloudflare/workers-types@5.20261104.1)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@types/node@24.10.1)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(jiti@2.7.0)(kysely@0.28.20)(react-dom@19.2.3(react@19.2.3))(typescript@5.7.3)(vitest@4.1.5(@types/node@24.10.1)(vite@8.0.8(@types/node@24.10.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)))':
     dependencies:
       '@hono/node-server': 1.19.11(hono@4.12.7)
       '@modelcontextprotocol/ext-apps': 2.0.3(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod@4.3.6)
