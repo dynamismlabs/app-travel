@@ -1,6 +1,6 @@
 # Maintaining Travel
 
-Travel is a personal app built with App Builder (core 0.2.4 from kit `d2b87bf`, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app, and docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
+Travel is a personal app built with App Builder (core 0.2.11 from kit `0c3c831`, starter 0.2.0, pinned in vendor/). Take a newer core with the kit's `upgrade --core <kit checkout> --json`. It was Ri's built-in Travel app, and docs/parity.md lists every feature and what changed. Use pnpm. Read the build skill in .agents/skills/build-personal-app before changing how Travel runs, connects or changes.
 
 ## Layout
 

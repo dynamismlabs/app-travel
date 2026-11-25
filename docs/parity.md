@@ -20,6 +20,15 @@ On core 0.2.2 the whole app also works inside an assistant, verified in the kit'
 
 The other findings are things Travel works around itself that the kit or Ri should fix; they're under "What the kit and Ri should change".
 
+### What moved for v0.1.8 (kit #29 to #35, core 0.2.11)
+
+| Line | Was | Now |
+| --- | --- | --- |
+| Connecting to your accounts (kit #35) | Settings asked for Ri's address and sent the browser to Ri's approval page at `127.0.0.1`, which a laptop using the Mini's Ri can't open | The Ri that installed Travel connects it in its own dialog over loopback with the host key, and Settings asks for Ri's address only when it isn't known (dynamismlabs/ri#71) |
+| Run logs (kit #29) | Pruning sorted change and upgrade logs by name and could delete the newest | Kept by time |
+| The kit's screens (kit #30 to #34) | Styled by Travel's own copy of the starter's rules | Unchanged: Travel keeps its own gray rules and doesn't import `@app-builder/core/screens.css` |
+| The upgrade | Kit `d2b87bf`, core 0.2.4 | `upgrade` to core 0.2.11 (sha256 `a069e000…`) committed `81b036f` and switched `local.travel` from `f79238f`, every check passing. Nothing in Travel needed changing |
+
 ### What moved for v0.1.7 (kit #28, core 0.2.4)
 
 | Line | Was | Now |
